@@ -23,9 +23,9 @@ variant subscription-info {
     /// Set a wall clock timer.
     wall-clock-timeout(wall-clock-timeout),
     /// Wait for a readable stream to have data ready.
-    read(handle descriptor),
+    read(descriptor),
     /// Wait for a writeable stream to be ready to accept data.
-    write(handle descriptor),
+    write(descriptor),
 }
 ```
 
