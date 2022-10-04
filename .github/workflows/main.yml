@@ -28,4 +28,6 @@ jobs:
     - run: rustup update stable && rustup default stable
     - run: rustup target add wasm32-wasi
     - run: cargo build
+    - run: cargo run -p verify --target x86_64-unknown-linux-gnu ./target/wasm32-wasi/debug/preview1.wasm
     - run: cargo build --release
+    - run: cargo run -p verify --target x86_64-unknown-linux-gnu ./target/wasm32-wasi/release/preview1.wasm
