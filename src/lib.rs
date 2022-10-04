@@ -10,14 +10,25 @@ wit_bindgen_guest_rust::import!("wit/wasi-random.wit.md");
 use std::arch::wasm32::unreachable;
 use wasi::*;
 
+extern "C" {
+    fn replace_realloc_global(val: usize) -> usize;
+}
+
 #[no_mangle]
-pub extern "C" fn cabi_realloc(
+pub unsafe extern "C" fn cabi_realloc(
     old_ptr: *mut u8,
     old_size: usize,
-    align: usize,
-    new_size: usize,
+    _align: usize,
+    _new_size: usize,
 ) -> *mut u8 {
-    unreachable()
+    if !old_ptr.is_null() || old_size != 0 {
+        unreachable();
+    }
+    let base = replace_realloc_global(0);
+    if base == 0 {
+        unreachable();
+    }
+    base as *mut u8
 }
 
 /// Read command-line argument data.
