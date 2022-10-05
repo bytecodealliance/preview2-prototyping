@@ -7,8 +7,12 @@ edition = "2021"
 members = ['verify']
 
 [dependencies]
-wasi = "0.11.0"
-wit-bindgen-guest-rust = { git = "https://github.com/bytecodealliance/wit-bindgen" }
+wasi = { version = "0.11.0", default-features = false }
+
+# TODO: Handle support is temporarily removed in upstream wit-bindgen, so use a
+# temporary fork.
+#wit-bindgen-guest-rust = { git = "https://github.com/bytecodealliance/wit-bindgen" }
+wit-bindgen-guest-rust = { git = "https://github.com/sunfishcode/wit-bindgen", branch = "keep-supporting-handles-for-now" }
 
 [build-dependencies]
 wasm-encoder = "0.18.0"
@@ -17,8 +21,17 @@ object = { version = "0.29.0", default-features = false, features = ['archive'] 
 [lib]
 crate-type = ["cdylib"]
 
+[profile.release]
+# Omit any unwinding support.
+panic = 'abort'
+# Omit integer overflow checks, which include failure messages which require
+# string initializers.
+overflow-checks = false
+
 # Make dev look like a release build since this adapter module won't work with
 # a debug build that uses data segments and such.
 [profile.dev]
 opt-level = 3
 debug = 0
+panic = 'abort'
+overflow-checks = false
