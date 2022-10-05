@@ -22,11 +22,9 @@ object = { version = "0.29.0", default-features = false, features = ['archive'] 
 crate-type = ["cdylib"]
 
 [profile.release]
-# Omit any unwinding support.
+# Omit any unwinding support. This is currently the default for wasm, though
+# that could theoretically change in the future.
 panic = 'abort'
-# Omit integer overflow checks, which include failure messages which require
-# string initializers.
-overflow-checks = false
 
 # Make dev look like a release build since this adapter module won't work with
 # a debug build that uses data segments and such.
@@ -34,4 +32,6 @@ overflow-checks = false
 opt-level = 3
 debug = 0
 panic = 'abort'
+# Omit integer overflow checks, which include failure messages which require
+# string initializers.
 overflow-checks = false
