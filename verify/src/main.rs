@@ -25,7 +25,7 @@ fn main() -> Result<()> {
                     let i = i?;
                     match i.ty {
                         TypeRef::Func(_) => {
-                            if i.module != "wasi" {
+                            if !i.module.starts_with("wasi-") && i.module != "canonical_abi" {
                                 bail!("import from unknown module `{}`", i.module);
                             }
                         }
