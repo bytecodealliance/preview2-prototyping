@@ -49,7 +49,7 @@ resolution: func() -> instant
 ```wit
 /// This creates a new `monotonic-timer` with the given starting time. It will
 /// count down from this time until it reaches zero.
-new-timer: func(initial: instant) -> handle monotonic-timer
+new-timer: func(initial: instant) -> monotonic-timer
 ```
 
 ```wit

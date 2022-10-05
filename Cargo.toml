@@ -1,13 +1,24 @@
 [package]
-name = "preview1"
+name = "wasi_snapshot_preview1"
 version = "0.0.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[workspace]
+members = ['verify']
 
 [dependencies]
-wasi = "0.11.0+wasi-snapshot-preview1"
+wasi = "0.11.0"
 wit-bindgen-guest-rust = { git = "https://github.com/bytecodealliance/wit-bindgen" }
+
+[build-dependencies]
+wasm-encoder = "0.18.0"
+object = { version = "0.29.0", default-features = false, features = ['archive'] }
 
 [lib]
 crate-type = ["cdylib"]
+
+# Make dev look like a release build since this adapter module won't work with
+# a debug build that uses data segments and such.
+[profile.dev]
+opt-level = 3
+debug = 0

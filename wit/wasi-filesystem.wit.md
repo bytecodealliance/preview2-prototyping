@@ -109,7 +109,7 @@ flags %flags {
 ## `stat`
 ```wit
 /// File attributes.
-/// 
+///
 /// Note: This was called `filestat` in earlier versions of WASI.
 record stat {
     /// Device ID of device containing the file.
@@ -207,7 +207,7 @@ variant new-timestamp {
 
 ## `dirent`
 ```wit
-/// A directory entry. 
+/// A directory entry.
 record dirent {
     /// The serial number of the file referred to by this directory entry.
     ino: inode,
@@ -607,7 +607,7 @@ link-at: func(
     /// The relative source path from which to link.
     old-path: string,
     /// The base directory for `new-path`.
-    new-descriptor: handle descriptor,
+    new-descriptor: descriptor,
     /// The relative destination path at which to create the hard link.
     new-path: string,
 ) -> result<_, errno>
@@ -671,7 +671,7 @@ rename-at: func(
     /// The relative source path of the file or directory to rename.
     old-path: string,
     /// The base directory for `new-path`.
-    new-descriptor: handle descriptor,
+    new-descriptor: descriptor,
     /// The relative destination path to which to rename the file or directory.
     new-path: string,
 ) -> result<_, errno>
