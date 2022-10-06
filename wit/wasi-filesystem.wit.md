@@ -481,6 +481,8 @@ set-times: func(
 ///
 /// Note: This is similar to `pread` in POSIX.
 pread: func(
+    /// The maximum number of bytes to read.
+    len: size,
     /// The offset within the file at which to read.
     offset: filesize,
 ) -> result<list<u8>, errno>
@@ -496,7 +498,7 @@ pwrite: func(
     buf: list<u8>,
     /// The offset within the file at which to write.
     offset: filesize,
-) -> result<_, errno>
+) -> result<size, errno>
 ```
 
 ## `readdir`
