@@ -14,6 +14,12 @@ which are not accessible by this API.
 Some of the content and ideas here are derived from
 [CloudABI](https://github.com/NuxiNL/cloudabi).
 
+## `descriptor`
+```wit
+/// A "file" descriptor. In the future, this will be replaced by handle types.
+type descriptor = u32
+```
+
 ## `size`
 ```wit
 /// Size of a range of bytes in memory.
@@ -396,20 +402,14 @@ variant seek-from {
 }
 ```
 
-## `descriptor`
-```wit
-/// A descriptor is a reference to a filesystem object, which may be a file,
-/// directory, named pipe, special file, or other object on which filesystem
-/// calls may be made.
-resource descriptor {
-```
-
 ## `fadvise`
 ```wit
 /// Provide file advisory information on a descriptor.
 ///
 /// This is similar to `posix_fadvise` in POSIX.
 fadvise: func(
+    /// The resource to operate on.
+    fd: descriptor,
     /// The offset within the file to which the advisory applies.
     offset: u64,
     /// The length of the region to which the advisory applies.
@@ -425,6 +425,8 @@ fadvise: func(
 ///
 /// Note: This is similar to `posix_fallocate` in POSIX.
 fallocate: func(
+    /// The resource to operate on.
+    fd: descriptor,
     /// The offset at which to start the allocation.
     offset: filesize,
     /// The length of the area that is allocated.
@@ -437,7 +439,10 @@ fallocate: func(
 /// Synchronize the data of a file to disk.
 ///
 /// Note: This is similar to `fdatasync` in POSIX.
-datasync: func() -> result<_, errno>
+datasync: func(
+    /// The resource to operate on.
+    fd: descriptor,
+) -> result<_, errno>
 ```
 
 ## `info`
@@ -448,7 +453,10 @@ datasync: func() -> result<_, errno>
 /// as additional fields.
 ///
 /// Note: This was called `fdstat_get` in earlier versions of WASI.
-info: func() -> result<info, errno>
+info: func(
+    /// The resource to operate on.
+    fd: descriptor,
+) -> result<info, errno>
 ```
 
 ## `set-size`
@@ -457,7 +465,11 @@ info: func() -> result<info, errno>
 /// extra bytes are filled with zeros.
 ///
 /// Note: This was called `fd_filestat_set_size` in earlier versions of WASI.
-set-size: func(size: filesize) -> result<_, errno>
+set-size: func(
+    /// The resource to operate on.
+    fd: descriptor,
+    size: filesize
+) -> result<_, errno>
 ```
 
 ## `set-times`
@@ -468,6 +480,8 @@ set-size: func(size: filesize) -> result<_, errno>
 ///
 /// Note: This was called `fd_filestat_set_times` in earlier versions of WASI.
 set-times: func(
+    /// The resource to operate on.
+    fd: descriptor,
     /// The desired values of the data access timestamp.
     atim: new-timestamp,
     /// The desired values of the data modification timestamp.
@@ -481,6 +495,8 @@ set-times: func(
 ///
 /// Note: This is similar to `pread` in POSIX.
 pread: func(
+    /// The resource to operate on.
+    fd: descriptor,
     /// The maximum number of bytes to read.
     len: size,
     /// The offset within the file at which to read.
@@ -494,6 +510,8 @@ pread: func(
 ///
 /// Note: This is similar to `pwrite` in POSIX.
 pwrite: func(
+    /// The resource to operate on.
+    fd: descriptor,
     /// Data to write
     buf: list<u8>,
     /// The offset within the file at which to write.
@@ -515,6 +533,8 @@ pwrite: func(
 /// read buffer size in case it's too small to fit a single large directory
 /// entry, or skip the oversized directory entry.
 readdir: func(
+    /// The resource to operate on.
+    fd: descriptor,
     /// If true, rewind the current position to the beginning before reading.
     rewind: bool
 ) -> result<list<u8>, errno>
@@ -530,6 +550,8 @@ readdir: func(
 ///
 /// Note: This is similar to `lseek` in POSIX.
 seek: func(
+    /// The resource to operate on.
+    fd: descriptor,
     /// The method to compute the new offset.
     %from: seek-from,
 ) -> result<filesize, errno>
@@ -540,7 +562,10 @@ seek: func(
 /// Synchronize the data and metadata of a file to disk.
 ///
 /// Note: This is similar to `fsync` in POSIX.
-sync: func() -> result<_, errno>
+sync: func(
+    /// The resource to operate on.
+    fd: descriptor,
+) -> result<_, errno>
 ```
 
 ## `tell`
@@ -550,7 +575,10 @@ sync: func() -> result<_, errno>
 /// Returns the current offset of the descriptor, relative to the start of the file.
 ///
 /// Note: This is similar to `lseek(fd, 0, SEEK_CUR)` in POSIX.
-tell: func() -> result<filesize, errno>
+tell: func(
+    /// The resource to operate on.
+    fd: descriptor,
+) -> result<filesize, errno>
 ```
 
 ## `create-directory-at`
@@ -559,6 +587,8 @@ tell: func() -> result<filesize, errno>
 ///
 /// Note: This is similar to `mkdirat` in POSIX.
 create-directory-at: func(
+    /// The resource to operate on.
+    fd: descriptor,
     /// The relative path at which to create the directory.
     path: string,
 ) -> result<_, errno>
@@ -572,6 +602,8 @@ create-directory-at: func(
 ///
 /// Note: This was called `fd_filestat_get` in earlier versions of WASI.
 stat-at: func(
+    /// The resource to operate on.
+    fd: descriptor,
     /// Flags determining the method of how the path is resolved.
     at-flags: at-flags,
     /// The relative path of the file or directory to inspect.
@@ -587,6 +619,8 @@ stat-at: func(
 ///
 /// Note: This was called `path_filestat_set_times` in earlier versions of WASI.
 set-times-at: func(
+    /// The resource to operate on.
+    fd: descriptor,
     /// Flags determining the method of how the path is resolved.
     at-flags: at-flags,
     /// The relative path of the file or directory to operate on.
@@ -604,6 +638,8 @@ set-times-at: func(
 ///
 /// Note: This is similar to `linkat` in POSIX.
 link-at: func(
+    /// The resource to operate on.
+    fd: descriptor,
     /// Flags determining the method of how the path is resolved.
     old-at-flags: at-flags,
     /// The relative source path from which to link.
@@ -627,6 +663,8 @@ link-at: func(
 ///
 /// Note: This is similar to `openat` in POSIX.
 open-at: func(
+    /// The resource to operate on.
+    fd: descriptor,
     /// Flags determining the method of how the path is resolved.
     at-flags: at-flags,
     /// The relative path of the object to open.
@@ -646,6 +684,8 @@ open-at: func(
 ///
 /// Note: This is similar to `readlinkat` in POSIX.
 readlink-at: func(
+    /// The resource to operate on.
+    fd: descriptor,
     /// The relative path of the symbolic link from which to read.
     path: string,
 ) -> result<string, errno>
@@ -659,6 +699,8 @@ readlink-at: func(
 ///
 /// Note: This is similar to `unlinkat(fd, path, AT_REMOVEDIR)` in POSIX.
 remove-directory-at: func(
+    /// The resource to operate on.
+    fd: descriptor,
     /// The relative path to a directory to remove.
     path: string,
 ) -> result<_, errno>
@@ -670,6 +712,8 @@ remove-directory-at: func(
 ///
 /// Note: This is similar to `renameat` in POSIX.
 rename-at: func(
+    /// The resource to operate on.
+    fd: descriptor,
     /// The relative source path of the file or directory to rename.
     old-path: string,
     /// The base directory for `new-path`.
@@ -685,6 +729,8 @@ rename-at: func(
 ///
 /// Note: This is similar to `symlinkat` in POSIX.
 symlink-at: func(
+    /// The resource to operate on.
+    fd: descriptor,
     /// The contents of the symbolic link.
     old-path: string,
     /// The relative destination path at which to create the symbolic link.
@@ -699,6 +745,8 @@ symlink-at: func(
 /// Return `errno::isdir` if the path refers to a directory.
 /// Note: This is similar to `unlinkat(fd, path, 0)` in POSIX.
 unlink-file-at: func(
+    /// The resource to operate on.
+    fd: descriptor,
     /// The relative path to a file to unlink.
     path: string,
 ) -> result<_, errno>
@@ -713,6 +761,8 @@ unlink-file-at: func(
 ///
 /// Note: This is similar to `fchmodat` in POSIX.
 change-file-permissions-at: func(
+    /// The resource to operate on.
+    fd: descriptor,
     /// Flags determining the method of how the path is resolved.
     at-flags: at-flags,
     /// The relative path to operate on.
@@ -735,6 +785,8 @@ change-file-permissions-at: func(
 ///
 /// Note: This is similar to `fchmodat` in POSIX.
 change-directory-permissions-at: func(
+    /// The resource to operate on.
+    fd: descriptor,
     /// Flags determining the method of how the path is resolved.
     at-flags: at-flags,
     /// The relative path to operate on.
@@ -742,8 +794,4 @@ change-directory-permissions-at: func(
     /// The new permissions for the directory.
     mode: mode,
 ) -> result<_, errno>
-```
-
-```wit
-}
 ```

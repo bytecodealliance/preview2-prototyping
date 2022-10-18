@@ -3,6 +3,12 @@
 WASI Poll is a poll API intended to let users wait for I/O events on
 multiple handles at once.
 
+## `descriptor`
+```wit
+/// A "file" descriptor. In the future, this will be replaced by handle types.
+type descriptor = u32
+```
+
 ## `subscription`
 ```wit
 /// The type of event to subscribe to.
@@ -126,19 +132,6 @@ type instant = u64
 record datetime {
     seconds: u64,
     nanoseconds: u32,
-}
-```
-
-## `descriptor`
-```wit
-/// A descriptor referring to a readable and/or writeable stream.
-///
-/// TODO: When wit-bindgen supports importing types from other wit files, use
-/// the type from wasi-filesystem.
-resource descriptor {
-```
-
-```wit
 }
 ```
 
