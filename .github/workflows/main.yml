@@ -31,3 +31,4 @@ jobs:
     - run: cargo run -p verify ./target/wasm32-wasi/debug/wasi_snapshot_preview1.wasm
     - run: cargo build --release --target wasm32-wasi
     - run: cargo run -p verify ./target/wasm32-wasi/release/wasi_snapshot_preview1.wasm
+    - run: cargo build -p host
