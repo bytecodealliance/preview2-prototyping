@@ -453,7 +453,7 @@ datasync: func(
 /// as additional fields.
 ///
 /// Note: This was called `fdstat_get` in earlier versions of WASI.
-info: func(
+fd-info: func(
     /// The resource to operate on.
     fd: descriptor,
 ) -> result<info, errno>
