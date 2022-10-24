@@ -10,10 +10,10 @@ use { monotonic-clock, wall-clock } from wasi-clocks
 
 ## `default-monotonic-clock`
 ```wit
-default-monotonic-clock: monotonic-clock
+default-monotonic-clock: func() -> monotonic-clock
 ```
 
 ## `default-wall-clock`
 ```wit
-default-wall-clock: wall-clock
+default-wall-clock: func() -> wall-clock
 ```
