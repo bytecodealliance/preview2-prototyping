@@ -411,9 +411,9 @@ fadvise: func(
     /// The resource to operate on.
     fd: descriptor,
     /// The offset within the file to which the advisory applies.
-    offset: u64,
+    offset: filesize,
     /// The length of the region to which the advisory applies.
-    len: u64,
+    len: size,
     /// The advice.
     advice: advice
 ) -> result<_, errno>
@@ -434,7 +434,7 @@ fallocate: func(
 ) -> result<_, errno>
 ```
 
-## `fdatasync`
+## `datasync`
 ```wit
 /// Synchronize the data of a file to disk.
 ///
@@ -445,7 +445,7 @@ datasync: func(
 ) -> result<_, errno>
 ```
 
-## `info`
+## `fd-info`
 ```wit
 /// Get information associated with a descriptor.
 ///
