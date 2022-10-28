@@ -523,6 +523,10 @@ pwrite: func(
 ```wit
 /// Read directory entries from a directory.
 ///
+/// TODO this shouldnt be a binary interface. Instead, define the struct
+/// and whatever of its members are required here, and then return a list
+/// of those structs. Delete the rewind argument.
+///
 /// When successful, the contents of the output buffer consist of a sequence of
 /// directory entries. Each directory entry consists of a `dirent` object,
 /// followed by `dirent::d_namlen` bytes holding the name of the directory
