@@ -1,2 +1,2 @@
 [target.wasm32-wasi]
-rustflags = ['-Clink-arg=--import-memory']
+#rustflags = ['-Clink-arg=--import-memory']
