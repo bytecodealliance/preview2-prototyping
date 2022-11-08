@@ -5,113 +5,71 @@ multiple handles at once.
 
 ## `descriptor`
 ```wit
-/// A "file" descriptor. In the future, this will be replaced by handle types.
+/// A "file" descriptor. In the future, this will be replaced by a handle type.
 type descriptor = u32
 ```
 
-## `subscription`
+## `future`
 ```wit
-/// The type of event to subscribe to.
-record subscription {
-    /// Information about the subscription.
-    info: subscription-info,
-    /// The value of the `userdata` to include in associated events.
-    userdata: userdata,
-}
+/// An asynchronous operation. In the future, this will be replaced by a handle type.
+type wasi-future = u32
 ```
 
-## `subscription-info`
+## `drop-future`
 ```wit
-/// Information about events to subscribe to.
-variant subscription-info {
-    /// Set a monotonic clock timer.
-    monotonic-clock-timeout(monotonic-clock-timeout),
-    /// Set a wall clock timer.
-    wall-clock-timeout(wall-clock-timeout),
-    /// Wait for a readable stream to have data ready.
-    read(descriptor),
-    /// Wait for a writeable stream to be ready to accept data.
-    write(descriptor),
-}
+/// Dispose of the specified future, after which it may no longer be used.
+drop-future: func(f: wasi-future)
 ```
 
-## `monotonic-clock-timeout`
+## `bytes-result`
 ```wit
-/// Information about a monotonic clock timeout.
-record monotonic-clock-timeout {
-    /// An absolute or relative timestamp.
-    timeout: instant,
-    /// Specifies an absolute, rather than relative, timeout.
-    is-absolute: bool,
-}
-```
-
-## `wall-clock-timeout`
-```wit
-/// Information about a wall clock timeout.
-record wall-clock-timeout {
-    /// An absolute or relative timestamp.
-    timeout: datetime,
-    /// Specifies an absolute, rather than relative, timeout.
-    is-absolute: bool,
-}
-```
-
-## `event`
-```wit
-/// An event which has occurred.
-record event {
-    /// The value of the `userdata` from the associated subscription.
-    userdata: userdata,
-    /// Information about the event.
-    info: event-info,
-}
-```
-
-## `event-info`
-```wit
-/// Information about an event which has occurred.
-variant event-info {
-    /// A monotonic clock timer expired.
-    monotonic-clock-timeout,
-    /// A wall clock timer expired.
-    wall-clock-timeout,
-    /// A readable stream has data ready.
-    read(read-event),
-    /// A writable stream is ready to accept data.
-    write(write-event),
-}
-```
-
-## `read-event`
-```wit
-/// An event indicating that a readable stream has data ready.
-record read-event {
-    /// The number of bytes ready to be read.
+/// Result of querying bytes readable or writable for a `descriptor`
+record bytes-result {
+    /// Indicates the number of bytes readable or writable for a still-open descriptor
     nbytes: u64,
-    /// Indicates the other end of the stream has disconnected and no further
-    /// data will be available on this stream.
-    is-closed: bool,
+    /// Indicates whether the other end of the stream has disconnected, in which case
+    /// no further data will be received (when reading) or accepted (when writing) on
+    /// this stream.
+    is-closed: bool
 }
 ```
 
-## `write-event`
+## `bytes-readable`
 ```wit
-/// An event indicating that a writeable stream is ready to accept data.
-record write-event {
-    /// The number of bytes ready to be accepted
-    nbytes: u64,
-    /// Indicates the other end of the stream has disconnected and no further
-    /// data will be accepted on this stream.
-    is-closed: bool,
-}
+/// Query the specified `descriptor` for how many bytes are available to read.
+bytes-readable: func(fd: descriptor) -> bytes-result
 ```
 
-## `userdata`
+## `bytes-writable`
 ```wit
-/// User-provided data provided with subscriptions that is copied back
-/// into emitted events.
-type userdata = u64
+/// Query the specified `descriptor` for the number of bytes ready to be accepted.
+bytes-writable: func(fd: descriptor) -> bytes-result
+```
+
+## `subscribe-read`
+```wit
+/// Create a future which will resolve once either the specified descriptor has bytes
+/// available to read or the other end of the stream has been closed.
+subscribe-read: func(fd: descriptor) -> wasi-future
+```
+
+## `subscribe-write`
+```wit
+/// Create a future which will resolve once either the specified descriptor is ready
+/// to accept bytes or the other end of the stream has been closed.
+subscribe-write: func(fd: descriptor) -> wasi-future
+```
+
+## `subscribe-wall-clock`
+```wit
+/// Create a future which will resolve once the specified time has been reached.
+subscribe-wall-clock: func(when: datetime, absolute: bool) -> wasi-future
+```
+
+## `subscribe-monotonic-clock`
+```wit
+/// Create a future which will resolve once the specified time has been reached.
+subscribe-monotonic-clock: func(when: instant, absolute: bool) -> wasi-future
 ```
 
 ## `instant`
@@ -136,7 +94,8 @@ record datetime {
 ```
 
 ## `poll-oneoff`
-/// Poll for events on a set of descriptors.
+```wit
+/// Poll for completion on a set of futures.
 ///
 /// The "oneoff" in the name refers to the fact that this function must do a
 /// linear scan through the entire list of subscriptions, which may be
@@ -144,6 +103,5 @@ record datetime {
 /// many times. In the future, it may be accompanied by an API similar to
 /// Linux's `epoll` which allows sets of subscriptions to be registered and
 /// made efficiently reusable.
-```wit
-poll-oneoff: func(in: list<subscription>) -> list<event>
+poll-oneoff: func(in: list<wasi-future>) -> list<bool>
 ```
