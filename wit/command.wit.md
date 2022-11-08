@@ -12,5 +12,5 @@ use { descriptor } from wasi-filesystem
 ## `command`
 ```wit
 /// The entrypoint of a WASI command.
-command: func(stdin: descriptor, stdout: descriptor)
+command: func(stdin: descriptor, stdout: descriptor, args: list<string>)
 ```
