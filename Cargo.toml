@@ -4,15 +4,11 @@ version = "0.0.0"
 edition = "2021"
 
 [workspace]
-members = ['verify']
+members = ['verify', 'host', 'test-programs']
 
 [dependencies]
 wasi = { version = "0.11.0", default-features = false }
-
-# TODO: Handle support is temporarily removed in upstream wit-bindgen, so use a
-# temporary fork.
-#wit-bindgen-guest-rust = { git = "https://github.com/bytecodealliance/wit-bindgen" }
-wit-bindgen-guest-rust = { git = "https://github.com/sunfishcode/wit-bindgen", branch = "keep-supporting-handles-for-now" }
+wit-bindgen-guest-rust = { git = "https://github.com/bytecodealliance/wit-bindgen", default-features = false, features = ["macros"] }
 
 [build-dependencies]
 wasm-encoder = "0.18.0"
