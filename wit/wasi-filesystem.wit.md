@@ -413,7 +413,7 @@ fadvise: func(
     /// The offset within the file to which the advisory applies.
     offset: filesize,
     /// The length of the region to which the advisory applies.
-    len: size,
+    len: filesize,
     /// The advice.
     advice: advice
 ) -> result<_, errno>
