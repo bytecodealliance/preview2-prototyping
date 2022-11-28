@@ -39,6 +39,16 @@ interface wasi-clocks {
       nanoseconds: u32,
   }
 
+  /// An asynchronous operation. In the future, this will be replaced by a handle type.
+  /// TODO: `use` the `wasi-poll` version
+  type wasi-future = u32
+
+  /// Create a future which will resolve once the specified time has been reached.
+  subscribe-wall-clock: func(when: datetime, absolute: bool) -> wasi-future
+
+  /// Create a future which will resolve once the specified time has been reached.
+  subscribe-monotonic-clock: func(when: instant, absolute: bool) -> wasi-future
+
   /// Read the current value of the clock.
   ///
   /// As this the clock is monotonic, calling this function repeatedly will produce
@@ -857,59 +867,11 @@ interface wasi-filesystem {
 /// WASI Poll is a poll API intended to let users wait for I/O events on
 /// multiple handles at once.
 interface wasi-poll {
-  /// A "file" descriptor. In the future, this will be replaced by a handle type.
-  type descriptor = u32
-
   /// An asynchronous operation. In the future, this will be replaced by a handle type.
   type wasi-future = u32
 
   /// Dispose of the specified future, after which it may no longer be used.
   drop-future: func(f: wasi-future)
-
-  /// Result of querying bytes readable or writable for a `descriptor`
-  record bytes-result {
-      /// Indicates the number of bytes readable or writable for a still-open descriptor
-      nbytes: u64,
-      /// Indicates whether the other end of the stream has disconnected, in which case
-      /// no further data will be received (when reading) or accepted (when writing) on
-      /// this stream.
-      is-closed: bool
-  }
-
-  /// Query the specified `descriptor` for how many bytes are available to read.
-  bytes-readable: func(fd: descriptor) -> bytes-result
-
-  /// Query the specified `descriptor` for the number of bytes ready to be accepted.
-  bytes-writable: func(fd: descriptor) -> bytes-result
-
-  /// Create a future which will resolve once either the specified descriptor has bytes
-  /// available to read or the other end of the stream has been closed.
-  subscribe-read: func(fd: descriptor) -> wasi-future
-
-  /// Create a future which will resolve once either the specified descriptor is ready
-  /// to accept bytes or the other end of the stream has been closed.
-  subscribe-write: func(fd: descriptor) -> wasi-future
-
-  /// Create a future which will resolve once the specified time has been reached.
-  subscribe-wall-clock: func(when: datetime, absolute: bool) -> wasi-future
-
-  /// Create a future which will resolve once the specified time has been reached.
-  subscribe-monotonic-clock: func(when: instant, absolute: bool) -> wasi-future
-
-  /// A timestamp in nanoseconds.
-  ///
-  /// TODO: When wit-bindgen supports importing types from other wit files, use
-  /// the type from wasi-clocks.
-  type instant = u64
-
-  /// A time and date in seconds plus nanoseconds.
-  ///
-  /// TODO: When wit-bindgen supports importing types from other wit files, use
-  /// the type from wasi-clocks.
-  record datetime {
-      seconds: u64,
-      nanoseconds: u32,
-  }
 
   /// Poll for completion on a set of futures.
   ///
@@ -919,7 +881,58 @@ interface wasi-poll {
   /// many times. In the future, it may be accompanied by an API similar to
   /// Linux's `epoll` which allows sets of subscriptions to be registered and
   /// made efficiently reusable.
-  poll-oneoff: func(in: list<wasi-future>) -> list<bool>
+  ///
+  /// Note that the return type would ideally be `list<bool>`, but that would
+  /// be more difficult to polyfill given the current state of `wit-bindgen`.
+  /// See https://github.com/bytecodealliance/preview2-prototyping/pull/11#issuecomment-1329873061
+  /// for details.  For now, we use zero to mean "not ready" and non-zero to
+  /// mean "ready".
+  poll-oneoff: func(in: list<wasi-future>) -> list<u8>
+}
+
+interface wasi-tcp {
+  /// A socket pseudo-handle. In the future, this will be replaced by a handle type.
+  type socket = u32
+
+  /// An asynchronous operation. In the future, this will be replaced by a handle type.
+  // TODO: `use` the `wasi-poll` version
+  type wasi-future = u32
+
+  /// Errors which may be encountered when performing socket-related operations
+  // TODO: expand this list
+  enum error {
+      connection-aborted,
+      connection-refused,
+      connection-reset,
+      host-unreachable,
+      network-down,
+      network-unreachable,
+      timeout
+  }
+
+  /// Result of querying bytes readable or writable for a `socket`
+  record bytes-result {
+      /// Indicates the number of bytes readable or writable for a still-open socket
+      nbytes: u64,
+      /// Indicates whether the other end of the stream has disconnected, in which case
+      /// no further data will be received (when reading) or accepted (when writing) on
+      /// this stream.
+      is-closed: bool
+  }
+
+  /// Query the specified `socket` for how many bytes are available to read.
+  bytes-readable: func(s: socket) -> result<bytes-result, error>
+
+  /// Query the specified `socket` for the number of bytes ready to be accepted.
+  bytes-writable: func(s: socket) -> result<bytes-result, error>
+
+  /// Create a future which will resolve once either the specified socket has bytes
+  /// available to read or the other end of the stream has been closed.
+  subscribe-read: func(s: socket) -> wasi-future
+
+  /// Create a future which will resolve once either the specified socket is ready
+  /// to accept bytes or the other end of the stream has been closed.
+  subscribe-write: func(s: socket) -> wasi-future
 }
 
 world wasi {
@@ -929,6 +942,7 @@ world wasi {
   import wasi-filesystem: wasi-filesystem
   import wasi-random: wasi-random
   import wasi-poll: wasi-poll
+  import wasi-tcp: wasi-tcp
 
   default export command
 }
