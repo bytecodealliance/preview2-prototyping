@@ -4,7 +4,7 @@ use crate::bindings::{
     wasi_clocks, wasi_default_clocks, wasi_filesystem, wasi_logging, wasi_random,
 };
 use core::arch::wasm32::unreachable;
-use core::cell::{Cell, RefCell};
+use core::cell::{Cell, RefCell, UnsafeCell};
 use core::mem::{forget, size_of, MaybeUninit};
 use core::ptr::{self, copy_nonoverlapping, null_mut};
 use core::slice;
@@ -847,7 +847,7 @@ pub unsafe extern "C" fn path_readlink(
         let use_state_buf = buf_len < PATH_MAX;
 
         if use_state_buf {
-            state.register_buffer(state.path_buf.as_ptr() as *mut _, PATH_MAX);
+            state.register_buffer(state.path_buf.get().cast(), PATH_MAX);
         } else {
             state.register_buffer(buf, buf_len);
         }
@@ -1158,13 +1158,13 @@ struct State {
     buffer_len: Cell<usize>,
     ndescriptors: usize,
     descriptors: MaybeUninit<[Descriptor; 128]>,
-    path_buf: MaybeUninit<[u8; PATH_MAX]>,
+    path_buf: UnsafeCell<MaybeUninit<[u8; PATH_MAX]>>,
 }
 
 #[allow(improper_ctypes)]
 extern "C" {
-    fn get_global_ptr() -> *mut RefCell<State>;
-    fn set_global_ptr(a: *mut RefCell<State>);
+    fn get_global_ptr() -> *const RefCell<State>;
+    fn set_global_ptr(a: *const RefCell<State>);
 }
 
 impl State {
@@ -1191,25 +1191,31 @@ impl State {
     fn ptr() -> &'static RefCell<State> {
         assert!(size_of::<State>() <= PAGE_SIZE);
         unsafe {
-            match get_global_ptr() {
-                x if x.is_null() => {
-                    let grew = core::arch::wasm32::memory_grow(0, 1);
-                    if grew == usize::MAX {
-                        unreachable();
-                    }
-                    let ret = (grew * PAGE_SIZE) as *mut RefCell<State>;
-                    set_global_ptr(ret);
-                    ret.write(RefCell::new(State {
-                        buffer_ptr: Cell::new(null_mut()),
-                        buffer_len: Cell::new(0),
-                        ndescriptors: 0,
-                        descriptors: MaybeUninit::uninit(),
-                        path_buf: MaybeUninit::uninit(),
-                    }));
-                    &*ret
-                }
-                other => &*other,
+            let mut ptr = get_global_ptr();
+            if ptr.is_null() {
+                ptr = State::new();
+                set_global_ptr(ptr);
             }
+            &*ptr
+        }
+    }
+
+    #[cold]
+    fn new() -> &'static RefCell<State> {
+        let grew = core::arch::wasm32::memory_grow(0, 1);
+        if grew == usize::MAX {
+            unreachable();
+        }
+        let ret = (grew * PAGE_SIZE) as *mut RefCell<State>;
+        unsafe {
+            ret.write(RefCell::new(State {
+                buffer_ptr: Cell::new(null_mut()),
+                buffer_len: Cell::new(0),
+                ndescriptors: 0,
+                descriptors: MaybeUninit::uninit(),
+                path_buf: UnsafeCell::new(MaybeUninit::uninit()),
+            }));
+            &*ret
         }
     }
 
