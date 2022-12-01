@@ -22,12 +22,15 @@ crate-type = ["cdylib"]
 # that could theoretically change in the future.
 panic = 'abort'
 
+[profile.release.package.wasi_snapshot_preview1]
+opt-level = 's'
+strip = 'debuginfo'
+
 # Make dev look like a release build since this adapter module won't work with
 # a debug build that uses data segments and such.
 [profile.dev.package.wasi_snapshot_preview1]
 incremental = false
-opt-level = 3
-debug = 0
+opt-level = 's'
 # Omit integer overflow checks, which include failure messages which require
 # string initializers.
 overflow-checks = false
