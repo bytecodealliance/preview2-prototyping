@@ -214,7 +214,7 @@ pub unsafe extern "C" fn fd_advise(
         _ => return ERRNO_INVAL,
     };
     State::with(|state| {
-        let file = state.get_file(fd)?;
+        let file = state.get_seekable_file(fd)?;
         wasi_filesystem::fadvise(file.fd, offset, len, advice)?;
         Ok(())
     })
@@ -600,7 +600,7 @@ pub unsafe extern "C" fn fd_seek(
     newoffset: *mut Filesize,
 ) -> Errno {
     State::with(|state| {
-        let file = state.get_file(fd)?;
+        let file = state.get_seekable_file(fd)?;
         // It's ok to cast these indices; the WASI API will fail if
         // the resulting values are out of range.
         let from = match whence {
@@ -631,7 +631,7 @@ pub unsafe extern "C" fn fd_sync(fd: Fd) -> Errno {
 #[no_mangle]
 pub unsafe extern "C" fn fd_tell(fd: Fd, offset: *mut Filesize) -> Errno {
     State::with(|state| {
-        let file = state.get_file(fd)?;
+        let file = state.get_seekable_file(fd)?;
         *offset = wasi_filesystem::tell(file.fd)?;
         Ok(())
     })
@@ -693,7 +693,7 @@ pub unsafe extern "C" fn path_create_directory(
     let path = slice::from_raw_parts(path_ptr, path_len);
 
     State::with(|state| {
-        let file = state.get_file(fd)?;
+        let file = state.get_dir(fd)?;
         wasi_filesystem::create_directory_at(file.fd, path)?;
         Ok(())
     })
@@ -713,7 +713,7 @@ pub unsafe extern "C" fn path_filestat_get(
     let at_flags = at_flags_from_lookupflags(flags);
 
     State::with(|state| {
-        let file = state.get_file(fd)?;
+        let file = state.get_dir(fd)?;
         let stat = wasi_filesystem::stat_at(file.fd, at_flags, path)?;
         let filetype = match stat.type_ {
             wasi_filesystem::DescriptorType::Unknown => FILETYPE_UNKNOWN,
@@ -775,7 +775,7 @@ pub unsafe extern "C" fn path_filestat_set_times(
     let at_flags = at_flags_from_lookupflags(flags);
 
     State::with(|state| {
-        let file = state.get_file(fd)?;
+        let file = state.get_dir(fd)?;
         wasi_filesystem::set_times_at(file.fd, at_flags, path, atim, mtim)?;
         Ok(())
     })
@@ -798,8 +798,8 @@ pub unsafe extern "C" fn path_link(
     let at_flags = at_flags_from_lookupflags(old_flags);
 
     State::with(|state| {
-        let old = state.get_file(old_fd)?.fd;
-        let new = state.get_file(new_fd)?.fd;
+        let old = state.get_dir(old_fd)?.fd;
+        let new = state.get_dir(new_fd)?.fd;
         wasi_filesystem::link_at(old, at_flags, old_path, new, new_path)?;
         Ok(())
     })
@@ -852,7 +852,7 @@ pub unsafe extern "C" fn path_readlink(
             state.register_buffer(buf, buf_len);
         }
 
-        let file = state.get_file(fd)?;
+        let file = state.get_dir(fd)?;
         let path = wasi_filesystem::readlink_at(file.fd, path)?;
 
         assert_eq!(path.as_ptr(), buf);
@@ -886,7 +886,7 @@ pub unsafe extern "C" fn path_remove_directory(
     let path = slice::from_raw_parts(path_ptr, path_len);
 
     State::with(|state| {
-        let file = state.get_file(fd)?;
+        let file = state.get_dir(fd)?;
         wasi_filesystem::remove_directory_at(file.fd, path)?;
         Ok(())
     })
@@ -907,8 +907,8 @@ pub unsafe extern "C" fn path_rename(
     let new_path = slice::from_raw_parts(new_path_ptr, new_path_len);
 
     State::with(|state| {
-        let old = state.get_file(old_fd)?.fd;
-        let new = state.get_file(new_fd)?.fd;
+        let old = state.get_dir(old_fd)?.fd;
+        let new = state.get_dir(new_fd)?.fd;
         wasi_filesystem::rename_at(old, old_path, new, new_path)?;
         Ok(())
     })
@@ -928,7 +928,7 @@ pub unsafe extern "C" fn path_symlink(
     let new_path = slice::from_raw_parts(new_path_ptr, new_path_len);
 
     State::with(|state| {
-        let file = state.get_file(fd)?;
+        let file = state.get_dir(fd)?;
         wasi_filesystem::symlink_at(file.fd, old_path, new_path)?;
         Ok(())
     })
@@ -942,7 +942,7 @@ pub unsafe extern "C" fn path_unlink_file(fd: Fd, path_ptr: *const u8, path_len:
     let path = slice::from_raw_parts(path_ptr, path_len);
 
     State::with(|state| {
-        let file = state.get_file(fd)?;
+        let file = state.get_dir(fd)?;
         wasi_filesystem::unlink_file_at(file.fd, path)?;
         Ok(())
     })
@@ -1161,9 +1161,10 @@ struct State {
     path_buf: MaybeUninit<[u8; PATH_MAX]>,
 }
 
+#[allow(improper_ctypes)]
 extern "C" {
-    fn get_global_ptr() -> usize;
-    fn set_global_ptr(a: usize);
+    fn get_global_ptr() -> *mut RefCell<State>;
+    fn set_global_ptr(a: *mut RefCell<State>);
 }
 
 impl State {
@@ -1191,13 +1192,13 @@ impl State {
         assert!(size_of::<State>() <= PAGE_SIZE);
         unsafe {
             match get_global_ptr() {
-                0 => {
+                x if x.is_null() => {
                     let grew = core::arch::wasm32::memory_grow(0, 1);
                     if grew == usize::MAX {
                         unreachable();
                     }
                     let ret = (grew * PAGE_SIZE) as *mut RefCell<State>;
-                    set_global_ptr(ret as usize);
+                    set_global_ptr(ret);
                     ret.write(RefCell::new(State {
                         buffer_ptr: Cell::new(null_mut()),
                         buffer_len: Cell::new(0),
@@ -1207,8 +1208,7 @@ impl State {
                     }));
                     &*ret
                 }
-                1 => unreachable(),
-                other => &*(other as *const RefCell<State>),
+                other => &*other,
             }
         }
     }
@@ -1234,12 +1234,24 @@ impl State {
         }
     }
 
-    fn get_file(&self, fd: Fd) -> Result<&File, Errno> {
+    fn get_file_with_log_error(&self, fd: Fd, log_error: Errno) -> Result<&File, Errno> {
         match self.get(fd)? {
             Descriptor::File(file) => Ok(file),
-            Descriptor::Log => Err(ERRNO_INVAL),
+            Descriptor::Log => Err(log_error),
             Descriptor::Closed => Err(ERRNO_BADF),
         }
+    }
+
+    fn get_file(&self, fd: Fd) -> Result<&File, Errno> {
+        self.get_file_with_log_error(fd, ERRNO_INVAL)
+    }
+
+    fn get_dir(&self, fd: Fd) -> Result<&File, Errno> {
+        self.get_file_with_log_error(fd, ERRNO_NOTDIR)
+    }
+
+    fn get_seekable_file(&self, fd: Fd) -> Result<&File, Errno> {
+        self.get_file_with_log_error(fd, ERRNO_SPIPE)
     }
 
     /// Register `buf` and `buf_len` to be used by `cabi_realloc` to satisfy
