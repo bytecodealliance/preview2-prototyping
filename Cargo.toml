@@ -24,10 +24,10 @@ panic = 'abort'
 
 # Make dev look like a release build since this adapter module won't work with
 # a debug build that uses data segments and such.
-[profile.dev]
+[profile.dev.package.wasi_snapshot_preview1]
+incremental = false
 opt-level = 3
 debug = 0
-panic = 'abort'
 # Omit integer overflow checks, which include failure messages which require
 # string initializers.
 overflow-checks = false
