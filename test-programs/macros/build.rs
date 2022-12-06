@@ -15,6 +15,7 @@ fn main() {
         .arg("--release")
         .current_dir("../../")
         .arg("--target=wasm32-unknown-unknown")
+        .arg("--features=command")
         .env("CARGO_TARGET_DIR", &out_dir)
         .env_remove("CARGO_ENCODED_RUSTFLAGS");
     let status = cmd.status().unwrap();

@@ -34,3 +34,6 @@ opt-level = 's'
 # Omit integer overflow checks, which include failure messages which require
 # string initializers.
 overflow-checks = false
+
+[features]
+command = []
