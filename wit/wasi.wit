@@ -764,6 +764,13 @@ interface wasi-filesystem {
       mode: mode
   ) -> result<descriptor, errno>
 
+  /// Close a file or directory handle.
+  ///
+  /// Until wit supports handles, use an explicit `close` function.
+  ///
+  /// Note: This is similar to `close` in POSIX.
+  close: func(fd: descriptor)
+
   /// Read the contents of a symbolic link.
   ///
   /// Note: This is similar to `readlinkat` in POSIX.
