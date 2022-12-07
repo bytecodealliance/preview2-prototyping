@@ -887,7 +887,20 @@ pub unsafe extern "C" fn path_open(
     fdflags: Fdflags,
     opened_fd: *mut Fd,
 ) -> Errno {
-    unreachable()
+    drop(fs_rights_inheriting);
+
+    let path = slice::from_raw_parts(path_ptr, path_len);
+    let at_flags = at_flags_from_lookupflags(dirflags);
+    let o_flags = o_flags_from_oflags(oflags);
+    let flags = flags_from_descriptor_flags(fs_rights_base, fdflags);
+    let mode = wasi_filesystem::Mode::READABLE | wasi_filesystem::Mode::WRITEABLE;
+
+    State::with(|state| {
+        let file = state.get_dir(fd)?;
+        let result = wasi_filesystem::open_at(file.fd, at_flags, path, o_flags, flags, mode)?;
+        *opened_fd = result;
+        Ok(())
+    })
 }
 
 /// Read the contents of a symbolic link.
@@ -1303,6 +1316,52 @@ fn at_flags_from_lookupflags(flags: Lookupflags) -> wasi_filesystem::AtFlags {
     } else {
         wasi_filesystem::AtFlags::empty()
     }
+}
+
+fn o_flags_from_oflags(flags: Oflags) -> wasi_filesystem::OFlags {
+    let mut o_flags = wasi_filesystem::OFlags::empty();
+    if flags & OFLAGS_CREAT == OFLAGS_CREAT {
+        o_flags |= wasi_filesystem::OFlags::CREATE;
+    }
+    if flags & OFLAGS_DIRECTORY == OFLAGS_DIRECTORY {
+        o_flags |= wasi_filesystem::OFlags::DIRECTORY;
+    }
+    if flags & OFLAGS_EXCL == OFLAGS_EXCL {
+        o_flags |= wasi_filesystem::OFlags::EXCL;
+    }
+    if flags & OFLAGS_TRUNC == OFLAGS_TRUNC {
+        o_flags |= wasi_filesystem::OFlags::TRUNC;
+    }
+    o_flags
+}
+
+fn flags_from_descriptor_flags(
+    rights: Rights,
+    fdflags: Fdflags,
+) -> wasi_filesystem::DescriptorFlags {
+    let mut flags = wasi_filesystem::DescriptorFlags::empty();
+    if rights & wasi::RIGHTS_FD_READ == wasi::RIGHTS_FD_READ {
+        flags |= wasi_filesystem::DescriptorFlags::READ;
+    }
+    if rights & wasi::RIGHTS_FD_READ == wasi::RIGHTS_FD_WRITE {
+        flags |= wasi_filesystem::DescriptorFlags::WRITE;
+    }
+    if fdflags & wasi::FDFLAGS_SYNC == wasi::FDFLAGS_SYNC {
+        flags |= wasi_filesystem::DescriptorFlags::SYNC;
+    }
+    if fdflags & wasi::FDFLAGS_DSYNC == wasi::FDFLAGS_DSYNC {
+        flags |= wasi_filesystem::DescriptorFlags::DSYNC;
+    }
+    if fdflags & wasi::FDFLAGS_RSYNC == wasi::FDFLAGS_RSYNC {
+        flags |= wasi_filesystem::DescriptorFlags::RSYNC;
+    }
+    if fdflags & wasi::FDFLAGS_APPEND == wasi::FDFLAGS_APPEND {
+        flags |= wasi_filesystem::DescriptorFlags::APPEND;
+    }
+    if fdflags & wasi::FDFLAGS_NONBLOCK == wasi::FDFLAGS_NONBLOCK {
+        flags |= wasi_filesystem::DescriptorFlags::NONBLOCK;
+    }
+    flags
 }
 
 impl From<wasi_filesystem::Errno> for Errno {
