@@ -7,7 +7,7 @@ use crate::bindings::{
 use core::arch::wasm32::unreachable;
 use core::cell::{Cell, RefCell, UnsafeCell};
 use core::ffi::c_void;
-use core::mem::{self, forget, size_of, ManuallyDrop, MaybeUninit};
+use core::mem::{self, forget, replace, size_of, ManuallyDrop, MaybeUninit};
 use core::ptr::{self, copy_nonoverlapping, null_mut};
 use core::slice;
 use wasi::*;
@@ -850,7 +850,18 @@ pub unsafe extern "C" fn fd_readdir(
 /// would disappear if `dup2()` were to be removed entirely.
 #[no_mangle]
 pub unsafe extern "C" fn fd_renumber(fd: Fd, to: Fd) -> Errno {
-    unreachable()
+    State::with_mut(|state| {
+        let closed = state.closed;
+
+        let fd_desc = state.get_mut(fd)?;
+        let desc = replace(fd_desc, Descriptor::Closed(closed));
+
+        let to_desc = state.get_mut(to)?;
+        *to_desc = desc;
+
+        state.closed = Some(fd);
+        Ok(())
+    })
 }
 
 /// Move the offset of a file descriptor.
