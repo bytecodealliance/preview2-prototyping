@@ -176,7 +176,7 @@ impl wasi_filesystem::WasiFilesystem for WasiCtx {
         todo!()
     }
 
-    fn close(&mut self, fd: wasi_filesystem::Descriptor) {
+    fn close(&mut self, fd: wasi_filesystem::Descriptor) -> anyhow::Result<()> {
         todo!()
     }
 
