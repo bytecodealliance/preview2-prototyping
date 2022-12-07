@@ -1343,7 +1343,7 @@ fn flags_from_descriptor_flags(
     if rights & wasi::RIGHTS_FD_READ == wasi::RIGHTS_FD_READ {
         flags |= wasi_filesystem::DescriptorFlags::READ;
     }
-    if rights & wasi::RIGHTS_FD_READ == wasi::RIGHTS_FD_WRITE {
+    if rights & wasi::RIGHTS_FD_WRITE == wasi::RIGHTS_FD_WRITE {
         flags |= wasi_filesystem::DescriptorFlags::WRITE;
     }
     if fdflags & wasi::FDFLAGS_SYNC == wasi::FDFLAGS_SYNC {
