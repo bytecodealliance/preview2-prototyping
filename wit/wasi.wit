@@ -512,18 +512,6 @@ interface wasi-filesystem {
       advice: advice
   ) -> result<_, errno>
 
-  /// Force the allocation of space in a file.
-  ///
-  /// Note: This is similar to `posix_fallocate` in POSIX.
-  fallocate: func(
-      /// The resource to operate on.
-      fd: descriptor,
-      /// The offset at which to start the allocation.
-      offset: filesize,
-      /// The length of the area that is allocated.
-      len: filesize
-  ) -> result<_, errno>
-
   /// Synchronize the data of a file to disk.
   ///
   /// Note: This is similar to `fdatasync` in POSIX.
