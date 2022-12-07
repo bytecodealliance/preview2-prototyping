@@ -82,6 +82,14 @@ fn unwrap<T>(maybe: Option<T>) -> T {
     }
 }
 
+fn unwrap_result<T, E>(result: Result<T, E>) -> T {
+    if let Ok(value) = result {
+        value
+    } else {
+        unreachable()
+    }
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn cabi_import_realloc(
     old_ptr: *mut u8,
@@ -926,7 +934,7 @@ pub unsafe extern "C" fn path_open(
             None => state.push_desc(desc)?,
             // `recycle_fd` is a free fd.
             Some(recycle_fd) => {
-                let recycle_desc = state.get_mut(recycle_fd).unwrap();
+                let recycle_desc = unwrap_result(state.get_mut(recycle_fd));
                 let next_closed = match recycle_desc {
                     Descriptor::Closed(next) => *next,
                     _ => unreachable(),
