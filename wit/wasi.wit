@@ -348,6 +348,8 @@ interface wasi-filesystem {
       already,
       /// Bad message.
       badmsg,
+      /// Bad descriptor.
+      badf,
       /// Device or resource busy.
       busy,
       /// Operation canceled.
