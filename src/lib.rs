@@ -931,7 +931,13 @@ pub unsafe extern "C" fn path_open(
 
         let fd = match state.closed {
             // No free fds; create a new one.
-            None => state.push_desc(desc)?,
+            None => match state.push_desc(desc) {
+                Ok(new) => new,
+                Err(err) => {
+                    wasi_filesystem::close(result);
+                    return Err(err);
+                }
+            },
             // `recycle_fd` is a free fd.
             Some(recycle_fd) => {
                 let recycle_desc = unwrap_result(state.get_mut(recycle_fd));
