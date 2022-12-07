@@ -288,7 +288,23 @@ pub unsafe extern "C" fn fd_allocate(fd: Fd, offset: Filesize, len: Filesize) ->
 /// Note: This is similar to `close` in POSIX.
 #[no_mangle]
 pub unsafe extern "C" fn fd_close(fd: Fd) -> Errno {
-    unreachable()
+    State::with_mut(|state| {
+        let closed = state.closed;
+        let desc = state.get_mut(fd)?;
+
+        match desc {
+            Descriptor::File(file) => {
+                wasi_filesystem::close(file.fd);
+            }
+            Descriptor::Log => {}
+            Descriptor::Socket(_) => unreachable(),
+            Descriptor::Closed(_) => return Err(ERRNO_BADF),
+        }
+
+        *desc = Descriptor::Closed(closed);
+        state.closed = Some(fd);
+        Ok(())
+    })
 }
 
 /// Synchronize the data of a file to disk.
@@ -370,7 +386,7 @@ pub unsafe extern "C" fn fd_fdstat_get(fd: Fd, stat: *mut Fdstat) -> Errno {
         }
         // TODO: Handle socket case here once `wasi-tcp` has been fleshed out
         Descriptor::Socket(_) => unreachable(),
-        Descriptor::Closed => Err(ERRNO_BADF),
+        Descriptor::Closed(_) => Err(ERRNO_BADF),
     })
 }
 
@@ -577,7 +593,7 @@ pub unsafe extern "C" fn fd_pwrite(
         }
         // TODO: Handle socket case here once `wasi-tcp` has been fleshed out
         Descriptor::Socket(_) => unreachable(),
-        Descriptor::Closed => Err(ERRNO_BADF),
+        Descriptor::Closed(_) => Err(ERRNO_BADF),
     })
 }
 
@@ -741,7 +757,7 @@ pub unsafe extern "C" fn fd_write(
         }
         // TODO: Handle socket case here once `wasi-tcp` has been fleshed out
         Descriptor::Socket(_) => unreachable(),
-        Descriptor::Closed => Err(ERRNO_BADF),
+        Descriptor::Closed(_) => Err(ERRNO_BADF),
     })
 }
 
@@ -895,10 +911,33 @@ pub unsafe extern "C" fn path_open(
     let flags = flags_from_descriptor_flags(fs_rights_base, fdflags);
     let mode = wasi_filesystem::Mode::READABLE | wasi_filesystem::Mode::WRITEABLE;
 
-    State::with(|state| {
+    State::with_mut(|state| {
+        let desc = state.get_mut(fd)?;
+
         let file = state.get_dir(fd)?;
         let result = wasi_filesystem::open_at(file.fd, at_flags, path, o_flags, flags, mode)?;
-        *opened_fd = result;
+        let desc = Descriptor::File(File {
+            fd: result,
+            position: Cell::new(0),
+        });
+
+        let fd = match state.closed {
+            // No free fds; create a new one.
+            None => state.push_desc(desc)?,
+            // `recycle_fd` is a free fd.
+            Some(recycle_fd) => {
+                let recycle_desc = state.get_mut(recycle_fd).unwrap();
+                let next_closed = match recycle_desc {
+                    Descriptor::Closed(next) => *next,
+                    _ => unreachable(),
+                };
+                *recycle_desc = desc;
+                state.closed = next_closed;
+                recycle_fd
+            }
+        };
+
+        *opened_fd = fd;
         Ok(())
     })
 }
@@ -1449,7 +1488,7 @@ fn black_box(x: Errno) -> Errno {
 
 #[repr(C)]
 pub enum Descriptor {
-    Closed,
+    Closed(Option<Fd>),
     File(File),
     Socket(wasi_tcp::Socket),
     Log,
@@ -1481,6 +1520,9 @@ struct State {
     ndescriptors: u16,
     descriptors: MaybeUninit<[Descriptor; MAX_DESCRIPTORS]>,
 
+    /// Points to the head of a free-list of closed file descriptors.
+    closed: Option<Fd>,
+
     /// Auxiliary storage to handle the `path_readlink` function.
     path_buf: UnsafeCell<MaybeUninit<[u8; PATH_MAX]>>,
 
@@ -1510,7 +1552,7 @@ const fn command_data_size() -> usize {
     start -= size_of::<Descriptor>() * MAX_DESCRIPTORS;
 
     // Remove miscellaneous metadata also stored in state.
-    start -= 5 * size_of::<usize>();
+    start -= 7 * size_of::<usize>();
 
     // Everything else is the `command_data` allocation.
     start
@@ -1573,6 +1615,7 @@ impl State {
                 buffer_ptr: Cell::new(null_mut()),
                 buffer_len: Cell::new(0),
                 ndescriptors: 0,
+                closed: None,
                 descriptors: MaybeUninit::uninit(),
                 path_buf: UnsafeCell::new(MaybeUninit::uninit()),
                 command_data: MaybeUninit::uninit(),
@@ -1599,7 +1642,16 @@ impl State {
     fn get(&self, fd: Fd) -> Result<&Descriptor, Errno> {
         let index = usize::try_from(fd).unwrap();
         if index < usize::try_from(self.ndescriptors).unwrap() {
-            unsafe { (*self.descriptors.as_ptr()).get(index).ok_or(ERRNO_BADF) }
+            unsafe { Ok(unwrap((*self.descriptors.as_ptr()).get(index))) }
+        } else {
+            Err(ERRNO_BADF)
+        }
+    }
+
+    fn get_mut(&mut self, fd: Fd) -> Result<&mut Descriptor, Errno> {
+        let index = usize::try_from(fd).unwrap();
+        if index < usize::try_from(self.ndescriptors).unwrap() {
+            unsafe { Ok(unwrap((*self.descriptors.as_mut_ptr()).get_mut(index))) }
         } else {
             Err(ERRNO_BADF)
         }
@@ -1609,7 +1661,7 @@ impl State {
         match self.get(fd)? {
             Descriptor::File(file) => Ok(file),
             Descriptor::Log | Descriptor::Socket(_) => Err(error),
-            Descriptor::Closed => Err(ERRNO_BADF),
+            Descriptor::Closed(_) => Err(ERRNO_BADF),
         }
     }
 
@@ -1617,7 +1669,7 @@ impl State {
         match self.get(fd)? {
             Descriptor::Socket(socket) => Ok(*socket),
             Descriptor::Log | Descriptor::File(_) => Err(ERRNO_INVAL),
-            Descriptor::Closed => Err(ERRNO_BADF),
+            Descriptor::Closed(_) => Err(ERRNO_BADF),
         }
     }
 
