@@ -1639,7 +1639,7 @@ impl State {
             let descriptors = self.descriptors.as_mut_ptr();
             let ndescriptors = usize::try_from(self.ndescriptors).unwrap();
             if ndescriptors >= (*descriptors).len() {
-                return Err(ERRNO_INVAL);
+                return Err(ERRNO_NOMEM);
             }
             ptr::addr_of_mut!((*descriptors)[ndescriptors]).write(desc);
             self.ndescriptors += 1;
