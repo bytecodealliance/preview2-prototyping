@@ -640,10 +640,11 @@ pub unsafe extern "C" fn fd_read(
         let read_len = u32::try_from(len).unwrap();
         let file = match state.get(fd)? {
             Descriptor::File(f) => f,
-            Descriptor::Closed(_) => return Err(ERRNO_BADF),
-            Descriptor::StdoutLog | Descriptor::StderrLog | Descriptor::Socket(_) => {
-                return Err(ERRNO_INVAL)
+            Descriptor::Closed(_) | Descriptor::StdoutLog | Descriptor::StderrLog => {
+                return Err(ERRNO_BADF)
             }
+            // TODO: Handle socket case here once `wasi-tcp` has been fleshed out
+            Descriptor::Socket(_) => unreachable(),
             Descriptor::EmptyStdin => {
                 *nread = 0;
                 return Ok(());
