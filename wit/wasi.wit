@@ -181,6 +181,10 @@ interface wasi-filesystem {
   /// A "file" descriptor. In the future, this will be replaced by handle types.
   type descriptor = u32
 
+  /// A directory entry stream. In the future, this will be replaced by an
+  /// actual stream.
+  type dir-entry-stream = u32
+
   /// Size of a range of bytes in memory.
   type size = u32
 
@@ -318,13 +322,18 @@ interface wasi-filesystem {
   }
 
   /// A directory entry.
-  record dirent {
-      /// The serial number of the file referred to by this directory entry.
-      ino: inode,
-      /// The length of the name of the directory entry.
-      namelen: size,
+  record dir-entry {
+      /// The serial number of the object referred to by this directory entry.
+      /// May be none if the inode value is not known.
+      ///
+      /// When this is none, libc implementations might do an extra `stat-at`
+      /// call to retrieve the inode number to fill their `d_ino` fields, so
+      /// implementations which can set this to a non-none value should do so.
+      ino: option<inode>,
       /// The type of the file referred to by this directory entry.
       %type: descriptor-type,
+      /// The name of the object.
+      name: string,
   }
 
   /// Error codes returned by functions.
@@ -610,25 +619,12 @@ interface wasi-filesystem {
 
   /// Read directory entries from a directory.
   ///
-  /// TODO this shouldnt be a binary interface. Instead, define the struct
-  /// and whatever of its members are required here, and then return a list
-  /// of those structs. Delete the rewind argument.
-  ///
-  /// When successful, the contents of the output buffer consist of a sequence of
-  /// directory entries. Each directory entry consists of a `dirent` object,
-  /// followed by `dirent::d_namlen` bytes holding the name of the directory
-  /// entry.
-  ///
-  /// This function fills the output buffer as much as possible, potentially
-  /// truncating the last directory entry. This allows the caller to grow its
-  /// read buffer size in case it's too small to fit a single large directory
-  /// entry, or skip the oversized directory entry.
-  readdir: func(
-      /// The resource to operate on.
-      fd: descriptor,
-      /// If true, rewind the current position to the beginning before reading.
-      rewind: bool
-  ) -> result<list<u8>, errno>
+  /// This always returns a new stream which starts at the beginning of the
+  /// directory.
+  readdir: func(fd: descriptor) -> result<dir-entry-stream, errno>
+
+  /// Read a single directory entry from a `dir-entry-stream`.
+  read-dir-entry: func(dir-stream: dir-entry-stream) -> result<dir-entry, errno>
 
   /// Move the offset of a descriptor.
   ///
