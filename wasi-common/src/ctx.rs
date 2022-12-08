@@ -1,6 +1,6 @@
 use crate::clocks::WasiClocks;
-use crate::dir::{DirCaps, DirEntry, WasiDir};
-use crate::file::{FileCaps, FileEntry, WasiFile};
+use crate::dir::{DirEntry, WasiDir};
+use crate::file::WasiFile;
 use crate::sched::WasiSched;
 use crate::string_array::{StringArray, StringArrayError};
 use crate::table::Table;
@@ -38,38 +38,21 @@ impl WasiCtx {
         s
     }
 
-    pub fn insert_file(&mut self, fd: u32, file: Box<dyn WasiFile>, caps: FileCaps) {
+    pub fn insert_file(&mut self, fd: u32, file: Box<dyn WasiFile>) {
+        self.table().insert_at(fd, Box::new(file));
+    }
+
+    pub fn push_file(&mut self, file: Box<dyn WasiFile>) -> Result<u32, Error> {
+        self.table().push(Box::new(file))
+    }
+
+    pub fn insert_dir(&mut self, fd: u32, dir: Box<dyn WasiDir>, path: PathBuf) {
         self.table()
-            .insert_at(fd, Box::new(FileEntry::new(caps, file)));
+            .insert_at(fd, Box::new(DirEntry::new(Some(path), dir)));
     }
 
-    pub fn push_file(&mut self, file: Box<dyn WasiFile>, caps: FileCaps) -> Result<u32, Error> {
-        self.table().push(Box::new(FileEntry::new(caps, file)))
-    }
-
-    pub fn insert_dir(
-        &mut self,
-        fd: u32,
-        dir: Box<dyn WasiDir>,
-        caps: DirCaps,
-        file_caps: FileCaps,
-        path: PathBuf,
-    ) {
-        self.table().insert_at(
-            fd,
-            Box::new(DirEntry::new(caps, file_caps, Some(path), dir)),
-        );
-    }
-
-    pub fn push_dir(
-        &mut self,
-        dir: Box<dyn WasiDir>,
-        caps: DirCaps,
-        file_caps: FileCaps,
-        path: PathBuf,
-    ) -> Result<u32, Error> {
-        self.table()
-            .push(Box::new(DirEntry::new(caps, file_caps, Some(path), dir)))
+    pub fn push_dir(&mut self, dir: Box<dyn WasiDir>, path: PathBuf) -> Result<u32, Error> {
+        self.table().push(Box::new(DirEntry::new(Some(path), dir)))
     }
 
     pub fn table(&mut self) -> &mut Table {
@@ -85,32 +68,16 @@ impl WasiCtx {
         Ok(())
     }
 
-    pub fn set_stdin(&mut self, mut f: Box<dyn WasiFile>) {
-        let rights = Self::stdio_rights(&mut *f);
-        self.insert_file(0, f, rights);
+    pub fn set_stdin(&mut self, f: Box<dyn WasiFile>) {
+        self.insert_file(0, f);
     }
 
-    pub fn set_stdout(&mut self, mut f: Box<dyn WasiFile>) {
-        let rights = Self::stdio_rights(&mut *f);
-        self.insert_file(1, f, rights);
+    pub fn set_stdout(&mut self, f: Box<dyn WasiFile>) {
+        self.insert_file(1, f);
     }
 
-    pub fn set_stderr(&mut self, mut f: Box<dyn WasiFile>) {
-        let rights = Self::stdio_rights(&mut *f);
-        self.insert_file(2, f, rights);
-    }
-
-    fn stdio_rights(f: &mut dyn WasiFile) -> FileCaps {
-        let mut rights = FileCaps::all();
-
-        // If `f` is a tty, restrict the `tell` and `seek` capabilities, so
-        // that wasi-libc's `isatty` correctly detects the file descriptor
-        // as a tty.
-        if f.isatty() {
-            rights &= !(FileCaps::TELL | FileCaps::SEEK);
-        }
-
-        rights
+    pub fn set_stderr(&mut self, f: Box<dyn WasiFile>) {
+        self.insert_file(2, f);
     }
 
     pub fn push_preopened_dir(
@@ -118,14 +85,8 @@ impl WasiCtx {
         dir: Box<dyn WasiDir>,
         path: impl AsRef<Path>,
     ) -> Result<(), Error> {
-        let caps = DirCaps::all();
-        let file_caps = FileCaps::all();
-        self.table().push(Box::new(DirEntry::new(
-            caps,
-            file_caps,
-            Some(path.as_ref().to_owned()),
-            dir,
-        )))?;
+        self.table()
+            .push(Box::new(DirEntry::new(Some(path.as_ref().to_owned()), dir)))?;
         Ok(())
     }
 }

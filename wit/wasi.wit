@@ -78,9 +78,7 @@ interface wasi-clocks {
   wall-clock-now: func(fd: wall-clock) -> datetime
 
   /// Query the resolution of the clock.
-  ///
-  /// The nanoseconds field of the output is always less than 1000000000.
-  wall-clock-resolution: func(fd: wall-clock) -> datetime
+  wall-clock-resolution: func(fd: wall-clock) -> instant
 
   /// Returns the amount of time left before this timer reaches zero.
   monotonic-timer-current: func(fd: monotonic-timer) -> instant

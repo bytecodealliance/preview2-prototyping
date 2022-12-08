@@ -1,10 +1,29 @@
 [package]
 name = "wasi_snapshot_preview1"
-version = "0.0.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 
 [workspace]
-members = ['verify', 'host', 'test-programs']
+members = ["verify", "host", "test-programs", "wasi-common"]
+
+[workspace.package]
+version = "0.0.0"
+authors = ["The Wasmtime Project Developers"]
+edition = "2021"
+
+[workspace.dependencies]
+anyhow = "1.0.22"
+thiserror = "1.0.15"
+tracing = "0.1.26"
+cap-std = "1.0.0"
+cap-rand = "1.0.0"
+bitflags = "1.2"
+windows-sys = "0.42.0"
+rustix = "0.36.0"
+async-trait = "0.1.59"
+io-lifetimes = { version = "1.0.0", default-features = false }
+wasi-common = { path = "wasi-common" }
+once_cell = "1.12.0"
 
 [dependencies]
 wasi = { version = "0.11.0", default-features = false }
@@ -12,7 +31,7 @@ wit-bindgen-guest-rust = { git = "https://github.com/bytecodealliance/wit-bindge
 
 [build-dependencies]
 wasm-encoder = "0.18.0"
-object = { version = "0.29.0", default-features = false, features = ['archive'] }
+object = { version = "0.29.0", default-features = false, features = ["archive"] }
 
 [lib]
 crate-type = ["cdylib"]
@@ -31,6 +50,7 @@ strip = 'debuginfo'
 [profile.dev.package.wasi_snapshot_preview1]
 incremental = false
 opt-level = 's'
+
 # Omit integer overflow checks, which include failure messages which require
 # string initializers.
 overflow-checks = false

@@ -58,7 +58,6 @@ pub mod file;
 pub mod pipe;
 pub mod random;
 pub mod sched;
-pub mod snapshots;
 mod string_array;
 pub mod table;
 
@@ -66,7 +65,7 @@ pub use cap_rand::RngCore;
 pub use clocks::{SystemTimeSpec, WasiClocks, WasiMonotonicClock, WasiSystemClock};
 pub use ctx::WasiCtx;
 pub use dir::WasiDir;
-pub use error::{Error, ErrorExt, I32Exit};
+pub use error::{Errno, Error, ErrorExt, I32Exit};
 pub use file::WasiFile;
 pub use sched::{Poll, WasiSched};
 pub use string_array::StringArrayError;

@@ -100,7 +100,7 @@ impl From<&str> for ReadPipe<io::Cursor<String>> {
     }
 }
 
-#[wiggle::async_trait]
+#[async_trait::async_trait]
 impl<R: Read + Any + Send + Sync> WasiFile for ReadPipe<R> {
     fn as_any(&self) -> &dyn Any {
         self
@@ -184,7 +184,7 @@ impl WritePipe<io::Cursor<Vec<u8>>> {
     }
 }
 
-#[wiggle::async_trait]
+#[async_trait::async_trait]
 impl<W: Write + Any + Send + Sync> WasiFile for WritePipe<W> {
     fn as_any(&self) -> &dyn Any {
         self

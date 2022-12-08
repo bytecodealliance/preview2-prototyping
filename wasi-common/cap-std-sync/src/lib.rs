@@ -49,17 +49,18 @@ pub use sched::sched_ctx;
 use crate::net::Socket;
 use cap_rand::{Rng, RngCore, SeedableRng};
 use std::path::Path;
-use wasi_common::{file::FileCaps, table::Table, Error, WasiCtx, WasiFile};
+use wasi_common::{table::Table, Error, WasiCtx, WasiFile};
 
 pub struct WasiCtxBuilder(WasiCtx);
 
 impl WasiCtxBuilder {
     pub fn new() -> Self {
+        let mut table = Table::new();
         WasiCtxBuilder(WasiCtx::new(
             random_ctx(),
-            clocks_ctx(),
+            clocks_ctx(&mut table),
             sched_ctx(),
-            Table::new(),
+            table,
         ))
     }
     pub fn env(mut self, var: &str, value: &str) -> Result<Self, wasi_common::StringArrayError> {
@@ -127,12 +128,7 @@ impl WasiCtxBuilder {
         let socket: Socket = socket.into();
         let file: Box<dyn WasiFile> = socket.into();
 
-        let caps = FileCaps::FDSTAT_SET_FLAGS
-            | FileCaps::FILESTAT_GET
-            | FileCaps::READ
-            | FileCaps::POLL_READWRITE;
-
-        self.0.insert_file(fd, file, caps);
+        self.0.insert_file(fd, file);
         Ok(self)
     }
     pub fn build(self) -> WasiCtx {

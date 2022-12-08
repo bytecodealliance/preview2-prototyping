@@ -1,10 +1,9 @@
-use crate::file::{FdFlags, FileCaps, FileType, Filestat, OFlags, WasiFile};
+use crate::file::{FdFlags, FileType, Filestat, OFlags, WasiFile};
 use crate::{Error, ErrorExt, SystemTimeSpec};
-use bitflags::bitflags;
 use std::any::Any;
 use std::path::PathBuf;
 
-#[wiggle::async_trait]
+#[async_trait::async_trait]
 pub trait WasiDir: Send + Sync {
     fn as_any(&self) -> &dyn Any;
 
@@ -97,68 +96,14 @@ pub trait WasiDir: Send + Sync {
     }
 }
 
-pub(crate) struct DirEntry {
-    caps: DirCaps,
-    file_caps: FileCaps,
+pub struct DirEntry {
     preopen_path: Option<PathBuf>, // precondition: PathBuf is valid unicode
     dir: Box<dyn WasiDir>,
 }
 
 impl DirEntry {
-    pub fn new(
-        caps: DirCaps,
-        file_caps: FileCaps,
-        preopen_path: Option<PathBuf>,
-        dir: Box<dyn WasiDir>,
-    ) -> Self {
-        DirEntry {
-            caps,
-            file_caps,
-            preopen_path,
-            dir,
-        }
-    }
-    pub fn capable_of_dir(&self, caps: DirCaps) -> Result<(), Error> {
-        if self.caps.contains(caps) {
-            Ok(())
-        } else {
-            let missing = caps & !self.caps;
-            let err = if missing.intersects(DirCaps::READDIR) {
-                Error::not_dir()
-            } else {
-                Error::perm()
-            };
-            Err(err.context(format!("desired rights {:?}, has {:?}", caps, self.caps)))
-        }
-    }
-    pub fn capable_of_file(&self, caps: FileCaps) -> Result<(), Error> {
-        if self.file_caps.contains(caps) {
-            Ok(())
-        } else {
-            Err(Error::perm().context(format!(
-                "desired rights {:?}, has {:?}",
-                caps, self.file_caps
-            )))
-        }
-    }
-    pub fn drop_caps_to(&mut self, caps: DirCaps, file_caps: FileCaps) -> Result<(), Error> {
-        self.capable_of_dir(caps)?;
-        self.capable_of_file(file_caps)?;
-        self.caps = caps;
-        self.file_caps = file_caps;
-        Ok(())
-    }
-    pub fn child_dir_caps(&self, desired_caps: DirCaps) -> DirCaps {
-        self.caps & desired_caps
-    }
-    pub fn child_file_caps(&self, desired_caps: FileCaps) -> FileCaps {
-        self.file_caps & desired_caps
-    }
-    pub fn get_dir_fdstat(&self) -> DirFdStat {
-        DirFdStat {
-            dir_caps: self.caps,
-            file_caps: self.file_caps,
-        }
+    pub fn new(preopen_path: Option<PathBuf>, dir: Box<dyn WasiDir>) -> Self {
+        DirEntry { preopen_path, dir }
     }
     pub fn preopen_path(&self) -> &Option<PathBuf> {
         &self.preopen_path
@@ -166,59 +111,22 @@ impl DirEntry {
 }
 
 pub trait DirEntryExt {
-    fn get_cap(&self, caps: DirCaps) -> Result<&dyn WasiDir, Error>;
+    fn get_dir(&self) -> Result<&dyn WasiDir, Error>;
 }
 
 impl DirEntryExt for DirEntry {
-    fn get_cap(&self, caps: DirCaps) -> Result<&dyn WasiDir, Error> {
-        self.capable_of_dir(caps)?;
+    fn get_dir(&self) -> Result<&dyn WasiDir, Error> {
         Ok(&*self.dir)
     }
 }
 
-bitflags! {
-    pub struct DirCaps: u32 {
-        const CREATE_DIRECTORY        = 0b1;
-        const CREATE_FILE             = 0b10;
-        const LINK_SOURCE             = 0b100;
-        const LINK_TARGET             = 0b1000;
-        const OPEN                    = 0b10000;
-        const READDIR                 = 0b100000;
-        const READLINK                = 0b1000000;
-        const RENAME_SOURCE           = 0b10000000;
-        const RENAME_TARGET           = 0b100000000;
-        const SYMLINK                 = 0b1000000000;
-        const REMOVE_DIRECTORY        = 0b10000000000;
-        const UNLINK_FILE             = 0b100000000000;
-        const PATH_FILESTAT_GET       = 0b1000000000000;
-        const PATH_FILESTAT_SET_TIMES = 0b10000000000000;
-        const FILESTAT_GET            = 0b100000000000000;
-        const FILESTAT_SET_TIMES      = 0b1000000000000000;
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct DirFdStat {
-    pub file_caps: FileCaps,
-    pub dir_caps: DirCaps,
-}
-
 pub(crate) trait TableDirExt {
     fn get_dir(&self, fd: u32) -> Result<&DirEntry, Error>;
-    fn is_preopen(&self, fd: u32) -> bool;
 }
 
 impl TableDirExt for crate::table::Table {
     fn get_dir(&self, fd: u32) -> Result<&DirEntry, Error> {
         self.get(fd)
-    }
-    fn is_preopen(&self, fd: u32) -> bool {
-        if self.is::<DirEntry>(fd) {
-            let dir_entry: &DirEntry = self.get(fd).unwrap();
-            dir_entry.preopen_path.is_some()
-        } else {
-            false
-        }
     }
 }
 
