@@ -312,16 +312,6 @@ pub unsafe extern "C" fn fd_close(fd: Fd) -> Errno {
 
         let closed = state.closed;
         let desc = state.get_mut(fd)?;
-
-        match desc {
-            Descriptor::File(file) => {
-                wasi_filesystem::close(file.fd);
-            }
-            Descriptor::StdoutLog | Descriptor::StderrLog | Descriptor::EmptyStdin => {}
-            Descriptor::Socket(_) => unreachable(),
-            Descriptor::Closed(_) => return Err(ERRNO_BADF),
-        }
-
         *desc = Descriptor::Closed(closed);
         state.closed = Some(fd);
         Ok(())
@@ -858,7 +848,6 @@ pub unsafe extern "C" fn fd_renumber(fd: Fd, to: Fd) -> Errno {
 
         let to_desc = state.get_mut(to)?;
         *to_desc = desc;
-
         state.closed = Some(fd);
         Ok(())
     })
@@ -1109,13 +1098,7 @@ pub unsafe extern "C" fn path_open(
 
         let fd = match state.closed {
             // No free fds; create a new one.
-            None => match state.push_desc(desc) {
-                Ok(new) => new,
-                Err(err) => {
-                    wasi_filesystem::close(result);
-                    return Err(err);
-                }
-            },
+            None => state.push_desc(desc)?,
             // `recycle_fd` is a free fd.
             Some(recycle_fd) => {
                 let recycle_desc = unwrap_result(state.get_mut(recycle_fd));
@@ -1716,6 +1699,17 @@ pub enum Descriptor {
     /// Same as `StdoutLog` except for stderr. This is not overwritten during
     /// `command`.
     StderrLog,
+}
+
+impl Drop for Descriptor {
+    fn drop(&mut self) {
+        match self {
+            Descriptor::File(file) => wasi_filesystem::close(file.fd),
+            Descriptor::StdoutLog | Descriptor::StderrLog | Descriptor::EmptyStdin => {}
+            Descriptor::Socket(_) => unreachable(),
+            Descriptor::Closed(_) => {}
+        }
+    }
 }
 
 #[repr(C)]
