@@ -7,7 +7,7 @@ use crate::bindings::{
 use core::arch::wasm32::unreachable;
 use core::cell::{Cell, RefCell, UnsafeCell};
 use core::ffi::c_void;
-use core::mem::{self, forget, size_of, MaybeUninit};
+use core::mem::{self, forget, size_of, ManuallyDrop, MaybeUninit};
 use core::ptr::{self, copy_nonoverlapping, null_mut};
 use core::slice;
 use wasi::*;
@@ -341,16 +341,7 @@ pub unsafe extern "C" fn fd_fdstat_get(fd: Fd, stat: *mut Fdstat) -> Errno {
             let flags = wasi_filesystem::flags(file.fd)?;
             let type_ = wasi_filesystem::todo_type(file.fd)?;
 
-            let fs_filetype = match type_ {
-                wasi_filesystem::DescriptorType::RegularFile => FILETYPE_REGULAR_FILE,
-                wasi_filesystem::DescriptorType::Directory => FILETYPE_DIRECTORY,
-                wasi_filesystem::DescriptorType::BlockDevice => FILETYPE_BLOCK_DEVICE,
-                wasi_filesystem::DescriptorType::CharacterDevice => FILETYPE_CHARACTER_DEVICE,
-                wasi_filesystem::DescriptorType::Fifo => FILETYPE_UNKNOWN,
-                wasi_filesystem::DescriptorType::Socket => FILETYPE_SOCKET_STREAM,
-                wasi_filesystem::DescriptorType::SymbolicLink => FILETYPE_SYMBOLIC_LINK,
-                wasi_filesystem::DescriptorType::Unknown => FILETYPE_UNKNOWN,
-            };
+            let fs_filetype = type_.into();
 
             let mut fs_flags = 0;
             let mut fs_rights_base = !0;
@@ -462,19 +453,7 @@ pub unsafe extern "C" fn fd_filestat_get(fd: Fd, buf: *mut Filestat) -> Errno {
     State::with(|state| {
         let file = state.get_file(fd)?;
         let stat = wasi_filesystem::stat(file.fd)?;
-        let filetype = match stat.type_ {
-            wasi_filesystem::DescriptorType::Unknown => FILETYPE_UNKNOWN,
-            wasi_filesystem::DescriptorType::Directory => FILETYPE_DIRECTORY,
-            wasi_filesystem::DescriptorType::BlockDevice => FILETYPE_BLOCK_DEVICE,
-            wasi_filesystem::DescriptorType::RegularFile => FILETYPE_REGULAR_FILE,
-            // TODO: Add a way to disginguish between FILETYPE_SOCKET_STREAM and
-            // FILETYPE_SOCKET_DGRAM.
-            wasi_filesystem::DescriptorType::Socket => unreachable(),
-            wasi_filesystem::DescriptorType::SymbolicLink => FILETYPE_SYMBOLIC_LINK,
-            wasi_filesystem::DescriptorType::CharacterDevice => FILETYPE_CHARACTER_DEVICE,
-            // preview1 never had a FIFO code.
-            wasi_filesystem::DescriptorType::Fifo => FILETYPE_UNKNOWN,
-        };
+        let filetype = stat.type_.into();
         *buf = Filestat {
             dev: stat.dev,
             ino: stat.ino,
@@ -677,7 +656,77 @@ pub unsafe extern "C" fn fd_readdir(
     cookie: Dircookie,
     bufused: *mut Size,
 ) -> Errno {
-    unreachable()
+    let mut buf = core::slice::from_raw_parts_mut(buf, buf_len);
+    return State::with(|state| {
+        let dir = state.get_dir(fd)?;
+        let stream = wasi_filesystem::readdir(dir.fd)?;
+        // Schedule `stream` to get closed when the loop is finished below
+        let _dtor = CloseOnDrop(stream);
+
+        let mut i = 0;
+        while buf.len() > 0 {
+            i += 1;
+            // One allocation will be performed by the canonical ABI to make
+            // room for the pathname being read. Store it in the state's
+            // internal buffer which we'll copy out of later. Technically this
+            // could use `buf` if `buf` is bigger than `PATH_MAX +
+            // size_of::<Dirent>()` but that degree of optimization is left for
+            // a future pass.
+            state.register_buffer(state.path_buf.get().cast(), PATH_MAX);
+            let entry = match wasi_filesystem::read_dir_entry(stream)? {
+                Some(entry) => entry,
+                None => break,
+            };
+
+            let wasi_filesystem::DirEntry { ino, type_, name } = entry;
+            // Cancel the destructor of `name` which is a `String` since it
+            // lives in the memory within `state`.
+            let name = ManuallyDrop::new(name);
+
+            // The `cookie` is intepreted as the nth iteration of the stream
+            // that we're given. The `i` counter points one past the current
+            // iteration so skip this entry if the cookie is too large.
+            if cookie >= i {
+                continue;
+            }
+
+            // Copy a `dirent` describing this entry into the destination `buf`,
+            // truncating it if it doesn't fit entirely.
+            let dirent = wasi::Dirent {
+                d_next: i,
+                d_ino: ino.unwrap_or(0),
+                d_namlen: u32::try_from(name.len()).unwrap(),
+                d_type: type_.into(),
+            };
+            let bytes = core::slice::from_raw_parts(
+                (&dirent as *const wasi::Dirent).cast::<u8>(),
+                size_of::<Dirent>(),
+            );
+            let dirent_bytes_to_copy = buf.len().min(bytes.len());
+            buf[..dirent_bytes_to_copy].copy_from_slice(&bytes[..dirent_bytes_to_copy]);
+            buf = &mut buf[dirent_bytes_to_copy..];
+
+            // Copy the name bytes into the output `buf`, truncating it if it
+            // doesn't fit.
+            //
+            // Note that this might be a 0-byte copy if the `dirent` was
+            // truncated or fit entirely into the destination.
+            let name_bytes_to_copy = buf.len().min(name.len());
+            buf[..name_bytes_to_copy].copy_from_slice(&name[..name_bytes_to_copy]);
+            buf = &mut buf[name_bytes_to_copy..];
+        }
+
+        *bufused = buf_len - buf.len();
+        Ok(())
+    });
+
+    struct CloseOnDrop(wasi_filesystem::DirEntryStream);
+
+    impl Drop for CloseOnDrop {
+        fn drop(&mut self) {
+            wasi_filesystem::close(self.0);
+        }
+    }
 }
 
 /// Atomically replace a file descriptor by renumbering another file descriptor.
@@ -821,19 +870,7 @@ pub unsafe extern "C" fn path_filestat_get(
     State::with(|state| {
         let file = state.get_dir(fd)?;
         let stat = wasi_filesystem::stat_at(file.fd, at_flags, path)?;
-        let filetype = match stat.type_ {
-            wasi_filesystem::DescriptorType::Unknown => FILETYPE_UNKNOWN,
-            wasi_filesystem::DescriptorType::Directory => FILETYPE_DIRECTORY,
-            wasi_filesystem::DescriptorType::BlockDevice => FILETYPE_BLOCK_DEVICE,
-            wasi_filesystem::DescriptorType::RegularFile => FILETYPE_REGULAR_FILE,
-            // TODO: Add a way to disginguish between FILETYPE_SOCKET_STREAM and
-            // FILETYPE_SOCKET_DGRAM.
-            wasi_filesystem::DescriptorType::Socket => unreachable(),
-            wasi_filesystem::DescriptorType::SymbolicLink => FILETYPE_SYMBOLIC_LINK,
-            wasi_filesystem::DescriptorType::CharacterDevice => FILETYPE_CHARACTER_DEVICE,
-            // preview1 never had a FIFO code.
-            wasi_filesystem::DescriptorType::Fifo => FILETYPE_UNKNOWN,
-        };
+        let filetype = stat.type_.into();
         *buf = Filestat {
             dev: stat.dev,
             ino: stat.ino,
@@ -1509,6 +1546,24 @@ impl From<wasi_filesystem::Errno> for Errno {
             wasi_filesystem::Errno::Timedout => ERRNO_TIMEDOUT,
             wasi_filesystem::Errno::Txtbsy => ERRNO_TXTBSY,
             wasi_filesystem::Errno::Xdev => ERRNO_XDEV,
+        }
+    }
+}
+
+impl From<wasi_filesystem::DescriptorType> for wasi::Filetype {
+    fn from(ty: wasi_filesystem::DescriptorType) -> wasi::Filetype {
+        match ty {
+            wasi_filesystem::DescriptorType::RegularFile => FILETYPE_REGULAR_FILE,
+            wasi_filesystem::DescriptorType::Directory => FILETYPE_DIRECTORY,
+            wasi_filesystem::DescriptorType::BlockDevice => FILETYPE_BLOCK_DEVICE,
+            wasi_filesystem::DescriptorType::CharacterDevice => FILETYPE_CHARACTER_DEVICE,
+            // preview1 never had a FIFO code.
+            wasi_filesystem::DescriptorType::Fifo => FILETYPE_UNKNOWN,
+            // TODO: Add a way to disginguish between FILETYPE_SOCKET_STREAM and
+            // FILETYPE_SOCKET_DGRAM.
+            wasi_filesystem::DescriptorType::Socket => unreachable(),
+            wasi_filesystem::DescriptorType::SymbolicLink => FILETYPE_SYMBOLIC_LINK,
+            wasi_filesystem::DescriptorType::Unknown => FILETYPE_UNKNOWN,
         }
     }
 }
