@@ -92,7 +92,7 @@ impl wasi_filesystem::WasiFilesystem for WasiCtx {
     fn read_dir_entry(
         &mut self,
         stream: wasi_filesystem::DirEntryStream,
-    ) -> HostResult<wasi_filesystem::DirEntry, wasi_filesystem::Errno> {
+    ) -> HostResult<Option<wasi_filesystem::DirEntry>, wasi_filesystem::Errno> {
         todo!()
     }
 
