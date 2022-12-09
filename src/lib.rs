@@ -724,7 +724,7 @@ pub unsafe extern "C" fn fd_readdir(
 
     impl Drop for CloseOnDrop {
         fn drop(&mut self) {
-            wasi_filesystem::close(self.0);
+            wasi_filesystem::close_dir_entry_stream(self.0);
         }
     }
 }

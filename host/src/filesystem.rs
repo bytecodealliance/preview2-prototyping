@@ -96,6 +96,13 @@ impl wasi_filesystem::WasiFilesystem for WasiCtx {
         todo!()
     }
 
+    fn close_dir_entry_stream(
+        &mut self,
+        fd: wasi_filesystem::DirEntryStream,
+    ) -> anyhow::Result<()> {
+        todo!()
+    }
+
     fn seek(
         &mut self,
         fd: wasi_filesystem::Descriptor,
