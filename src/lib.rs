@@ -303,6 +303,13 @@ pub unsafe extern "C" fn fd_allocate(fd: Fd, offset: Filesize, len: Filesize) ->
 #[no_mangle]
 pub unsafe extern "C" fn fd_close(fd: Fd) -> Errno {
     State::with_mut(|state| {
+        // If there's a dirent cache entry for this file descriptor then drop
+        // it since the descriptor is being closed and future calls to
+        // `fd_readdir` should return an error.
+        if fd == state.dirent_cache.for_fd.get() {
+            drop(state.dirent_cache.stream.replace(None));
+        }
+
         let closed = state.closed;
         let desc = state.get_mut(fd)?;
 
@@ -658,46 +665,74 @@ pub unsafe extern "C" fn fd_readdir(
 ) -> Errno {
     let mut buf = core::slice::from_raw_parts_mut(buf, buf_len);
     return State::with(|state| {
-        let dir = state.get_dir(fd)?;
-        let stream = wasi_filesystem::readdir(dir.fd)?;
-        // Schedule `stream` to get closed when the loop is finished below
-        let _dtor = CloseOnDrop(stream);
+        // First determine if there's an entry in the dirent cache to use. This
+        // is done to optimize the use case where a large directory is being
+        // used with a fixed-sized buffer to avoid re-invoking the `readdir`
+        // function and continuing to use the same iterator.
+        //
+        // This is a bit tricky since the reqeusted state in this function call
+        // must match the prior state of the dirent stream, if any, so that's
+        // all validated here as well.
+        //
+        // Note that for the duration of this function the `cookie` specifier is
+        // the `n`th iteration of the `readdir` stream return value.
+        let prev_stream = state.dirent_cache.stream.replace(None);
+        let stream =
+            if state.dirent_cache.for_fd.get() == fd && state.dirent_cache.cookie.get() == cookie {
+                prev_stream
+            } else {
+                None
+            };
+        let mut iter;
+        match stream {
+            // All our checks passed and a dirent cache was available with a
+            // prior stream. Construct an iterator which will yield its first
+            // entry from cache and is additionally resuming at the `cookie`
+            // specified.
+            Some(stream) => {
+                iter = DirEntryIterator {
+                    stream,
+                    state,
+                    cookie,
+                    use_cache: true,
+                }
+            }
 
-        let mut i = 0;
+            // Either a dirent stream wasn't previously available, a different
+            // cookie was requested, or a brand new directory is now being read.
+            // In these situations fall back to resuming reading the directory
+            // from scratch, and the `cookie` value indicates how many items
+            // need skipping.
+            None => {
+                let dir = state.get_dir(fd)?;
+                iter = DirEntryIterator {
+                    state,
+                    cookie: 0,
+                    use_cache: false,
+                    stream: DirEntryStream(wasi_filesystem::readdir(dir.fd)?),
+                };
+
+                // Skip to the entry that is requested by the `cookie`
+                // parameter.
+                for _ in 0..cookie {
+                    match iter.next() {
+                        Some(Ok(_)) => {}
+                        Some(Err(e)) => return Err(e),
+                        None => return Ok(()),
+                    }
+                }
+            }
+        };
+
         while buf.len() > 0 {
-            i += 1;
-            // One allocation will be performed by the canonical ABI to make
-            // room for the pathname being read. Store it in the state's
-            // internal buffer which we'll copy out of later. Technically this
-            // could use `buf` if `buf` is bigger than `PATH_MAX +
-            // size_of::<Dirent>()` but that degree of optimization is left for
-            // a future pass.
-            state.register_buffer(state.path_buf.get().cast(), PATH_MAX);
-            let entry = match wasi_filesystem::read_dir_entry(stream)? {
-                Some(entry) => entry,
+            let (dirent, name) = match iter.next() {
+                Some(Ok(pair)) => pair,
+                Some(Err(e)) => return Err(e),
                 None => break,
             };
 
-            let wasi_filesystem::DirEntry { ino, type_, name } = entry;
-            // Cancel the destructor of `name` which is a `String` since it
-            // lives in the memory within `state`.
-            let name = ManuallyDrop::new(name);
-
-            // The `cookie` is intepreted as the nth iteration of the stream
-            // that we're given. The `i` counter points one past the current
-            // iteration so skip this entry if the cookie is too large.
-            if cookie >= i {
-                continue;
-            }
-
             // Copy a `dirent` describing this entry into the destination `buf`,
             // truncating it if it doesn't fit entirely.
-            let dirent = wasi::Dirent {
-                d_next: i,
-                d_ino: ino.unwrap_or(0),
-                d_namlen: u32::try_from(name.len()).unwrap(),
-                d_type: type_.into(),
-            };
             let bytes = core::slice::from_raw_parts(
                 (&dirent as *const wasi::Dirent).cast::<u8>(),
                 size_of::<Dirent>(),
@@ -712,19 +747,95 @@ pub unsafe extern "C" fn fd_readdir(
             // Note that this might be a 0-byte copy if the `dirent` was
             // truncated or fit entirely into the destination.
             let name_bytes_to_copy = buf.len().min(name.len());
-            buf[..name_bytes_to_copy].copy_from_slice(&name[..name_bytes_to_copy]);
+            core::ptr::copy_nonoverlapping(
+                name.as_ptr().cast(),
+                buf.as_mut_ptr(),
+                name_bytes_to_copy,
+            );
+
             buf = &mut buf[name_bytes_to_copy..];
+
+            // If the buffer is empty then that means the value may be
+            // truncated, so save the state of the iterator in our dirent cache
+            // and return.
+            //
+            // Note that `cookie - 1` is stored here since `iter.cookie` stores
+            // the address of the next item, and we're rewinding one item since
+            // the current item is truncated and will want to resume from that
+            // in the future.
+            //
+            // Additionally note that this caching step is skipped if the name
+            // to store doesn't actually fit in the dirent cache's path storage.
+            // In that case there's not much we can do and let the next call to
+            // `fd_readdir` start from scratch.
+            if buf.len() == 0 && name.len() <= DIRENT_CACHE {
+                let DirEntryIterator { stream, cookie, .. } = iter;
+                state.dirent_cache.stream.set(Some(stream));
+                state.dirent_cache.for_fd.set(fd);
+                state.dirent_cache.cookie.set(cookie - 1);
+                state.dirent_cache.cached_dirent.set(dirent);
+                std::ptr::copy(
+                    name.as_ptr().cast(),
+                    (*state.dirent_cache.path_data.get()).as_mut_ptr(),
+                    name.len(),
+                );
+                break;
+            }
         }
 
         *bufused = buf_len - buf.len();
         Ok(())
     });
 
-    struct CloseOnDrop(wasi_filesystem::DirEntryStream);
+    struct DirEntryIterator<'a> {
+        state: &'a State,
+        use_cache: bool,
+        cookie: Dircookie,
+        stream: DirEntryStream,
+    }
 
-    impl Drop for CloseOnDrop {
-        fn drop(&mut self) {
-            wasi_filesystem::close_dir_entry_stream(self.0);
+    impl<'a> Iterator for DirEntryIterator<'a> {
+        // Note the usage of `UnsafeCell<u8>` here to indicate that the data can
+        // alias the storage within `state`.
+        type Item = Result<(wasi::Dirent, &'a [UnsafeCell<u8>]), Errno>;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            self.cookie += 1;
+
+            if self.use_cache {
+                self.use_cache = false;
+                return Some(unsafe {
+                    let dirent = self.state.dirent_cache.cached_dirent.as_ptr().read();
+                    let ptr = (*(*self.state.dirent_cache.path_data.get()).as_ptr())
+                        .as_ptr()
+                        .cast();
+                    let buffer = core::slice::from_raw_parts(ptr, dirent.d_namlen as usize);
+                    Ok((dirent, buffer))
+                });
+            }
+            self.state
+                .register_buffer(self.state.path_buf.get().cast(), PATH_MAX);
+            let entry = match wasi_filesystem::read_dir_entry(self.stream.0) {
+                Ok(Some(entry)) => entry,
+                Ok(None) => return None,
+                Err(e) => return Some(Err(e.into())),
+            };
+
+            let wasi_filesystem::DirEntry { ino, type_, name } = entry;
+            let name = ManuallyDrop::new(name);
+            let dirent = wasi::Dirent {
+                d_next: self.cookie,
+                d_ino: ino.unwrap_or(0),
+                d_namlen: u32::try_from(name.len()).unwrap(),
+                d_type: type_.into(),
+            };
+            // Extend the lifetime of `name` to the `self.state` lifetime for
+            // this iterator since the data for the name lives within state.
+            let name = unsafe {
+                assert_eq!(name.as_ptr(), self.state.path_buf.get().cast());
+                core::slice::from_raw_parts(name.as_ptr().cast(), name.len())
+            };
+            Some(Ok((dirent, name)))
         }
     }
 }
@@ -1598,6 +1709,7 @@ pub enum Descriptor {
 
 #[repr(C)]
 pub struct File {
+    /// The handle to the preview2 descriptor that this file is referencing.
     fd: wasi_filesystem::Descriptor,
     position: Cell<u64>,
 }
@@ -1610,6 +1722,9 @@ const PAGE_SIZE: usize = 65536;
 const PATH_MAX: usize = 4096;
 
 const MAX_DESCRIPTORS: usize = 128;
+
+/// Maximum number of bytes to cache for a `wasi::Dirent` plus its path name.
+const DIRENT_CACHE: usize = 256;
 
 struct State {
     /// Used by `register_buffer` to coordinate allocations with
@@ -1637,6 +1752,26 @@ struct State {
 
     /// Arguments passed to the `command` entrypoint
     args: Option<&'static [WasmStr]>,
+
+    /// Cache for the `fd_readdir` call for a final `wasi::Dirent` plus path
+    /// name that didn't fit into the caller's buffer.
+    dirent_cache: DirentCache,
+}
+
+struct DirentCache {
+    stream: Cell<Option<DirEntryStream>>,
+    for_fd: Cell<wasi::Fd>,
+    cookie: Cell<wasi::Dircookie>,
+    cached_dirent: Cell<wasi::Dirent>,
+    path_data: UnsafeCell<MaybeUninit<[u8; DIRENT_CACHE]>>,
+}
+
+struct DirEntryStream(wasi_filesystem::DirEntryStream);
+
+impl Drop for DirEntryStream {
+    fn drop(&mut self) {
+        wasi_filesystem::close_dir_entry_stream(self.0);
+    }
 }
 
 pub struct WasmStr {
@@ -1652,6 +1787,7 @@ const fn command_data_size() -> usize {
     // fields.
     start -= PATH_MAX;
     start -= size_of::<Descriptor>() * MAX_DESCRIPTORS;
+    start -= size_of::<DirentCache>();
 
     // Remove miscellaneous metadata also stored in state.
     start -= 7 * size_of::<usize>();
@@ -1723,6 +1859,18 @@ impl State {
                 command_data: MaybeUninit::uninit(),
                 command_data_next: 0,
                 args: None,
+                dirent_cache: DirentCache {
+                    stream: Cell::new(None),
+                    for_fd: Cell::new(0),
+                    cookie: Cell::new(0),
+                    cached_dirent: Cell::new(wasi::Dirent {
+                        d_next: 0,
+                        d_ino: 0,
+                        d_type: FILETYPE_UNKNOWN,
+                        d_namlen: 0,
+                    }),
+                    path_data: UnsafeCell::new(MaybeUninit::uninit()),
+                },
             }));
             &*ret
         };
