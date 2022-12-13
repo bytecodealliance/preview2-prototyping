@@ -237,7 +237,7 @@ pub extern "C" fn clock_res_get(id: Clockid, resolution: &mut Timestamp) -> Errn
         }
         CLOCKID_REALTIME => {
             let res = wasi_clocks::wall_clock_resolution(wasi_default_clocks::default_wall_clock());
-            *resolution = res;
+            *resolution = u64::from(res.nanoseconds) + res.seconds * 1_000_000_000;
         }
         _ => unreachable(),
     }

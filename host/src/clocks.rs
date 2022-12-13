@@ -89,13 +89,15 @@ impl wasi_clocks::WasiClocks for WasiCtx {
     async fn wall_clock_resolution(
         &mut self,
         fd: wasi_clocks::WallClock,
-    ) -> anyhow::Result<wasi_clocks::Instant> {
+    ) -> anyhow::Result<wasi_clocks::Datetime> {
         let clock = self.table.get::<WallClock>(fd)?;
-        Ok(clock
-            .resolution()
-            .as_nanos()
-            .try_into()
-            .context("converting wall clock resolution to nanos u64")?)
+        let nanos = clock.resolution().as_nanos();
+        Ok(wasi_clocks::Datetime {
+            seconds: (nanos / 1_000_000_000_u128)
+                .try_into()
+                .context("converting wall clock resolution to seconds u64")?,
+            nanoseconds: (nanos % 1_000_000_000_u128).try_into().unwrap(),
+        })
     }
 
     async fn monotonic_timer_current(
