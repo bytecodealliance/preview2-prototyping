@@ -623,8 +623,11 @@ interface wasi-filesystem {
   /// directory.
   readdir: func(fd: descriptor) -> result<dir-entry-stream, errno>
 
+  /// Closes a handle returned by `readdir`
+  close-dir-entry-stream: func(s: dir-entry-stream)
+
   /// Read a single directory entry from a `dir-entry-stream`.
-  read-dir-entry: func(dir-stream: dir-entry-stream) -> result<dir-entry, errno>
+  read-dir-entry: func(dir-stream: dir-entry-stream) -> result<option<dir-entry>, errno>
 
   /// Move the offset of a descriptor.
   ///
