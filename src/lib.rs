@@ -141,7 +141,7 @@ pub unsafe extern "C" fn cabi_export_realloc(
     let mut ret = null_mut::<u8>();
     State::with_mut(|state| {
         let data = state.command_data.as_mut_ptr();
-        let ptr = usize::try_from(state.command_data_next).unwrap();
+        let ptr = unwrap_result(usize::try_from(state.command_data_next));
 
         // "oom" as too much argument data tried to flow into the component.
         // Ideally this would have a better error message?
@@ -1886,15 +1886,15 @@ impl State {
     }
 
     fn init(&mut self) {
-        self.push_desc(Descriptor::EmptyStdin).unwrap();
-        self.push_desc(Descriptor::StdoutLog).unwrap();
-        self.push_desc(Descriptor::StderrLog).unwrap();
+        unwrap_result(self.push_desc(Descriptor::EmptyStdin));
+        unwrap_result(self.push_desc(Descriptor::StdoutLog));
+        unwrap_result(self.push_desc(Descriptor::StderrLog));
     }
 
     fn push_desc(&mut self, desc: Descriptor) -> Result<Fd, Errno> {
         unsafe {
             let descriptors = self.descriptors.as_mut_ptr();
-            let ndescriptors = usize::try_from(self.ndescriptors).unwrap();
+            let ndescriptors = unwrap_result(usize::try_from(self.ndescriptors));
             if ndescriptors >= (*descriptors).len() {
                 return Err(ERRNO_NOMEM);
             }
@@ -1908,7 +1908,7 @@ impl State {
         unsafe {
             core::slice::from_raw_parts(
                 self.descriptors.as_ptr().cast(),
-                usize::try_from(self.ndescriptors).unwrap(),
+                unwrap_result(usize::try_from(self.ndescriptors)),
             )
         }
     }
@@ -1917,20 +1917,20 @@ impl State {
         unsafe {
             core::slice::from_raw_parts_mut(
                 self.descriptors.as_mut_ptr().cast(),
-                usize::try_from(self.ndescriptors).unwrap(),
+                unwrap_result(usize::try_from(self.ndescriptors)),
             )
         }
     }
 
     fn get(&self, fd: Fd) -> Result<&Descriptor, Errno> {
         self.descriptors()
-            .get(usize::try_from(fd).unwrap())
+            .get(unwrap_result(usize::try_from(fd)))
             .ok_or(ERRNO_BADF)
     }
 
     fn get_mut(&mut self, fd: Fd) -> Result<&mut Descriptor, Errno> {
         self.descriptors_mut()
-            .get_mut(usize::try_from(fd).unwrap())
+            .get_mut(unwrap_result(usize::try_from(fd)))
             .ok_or(ERRNO_BADF)
     }
 
