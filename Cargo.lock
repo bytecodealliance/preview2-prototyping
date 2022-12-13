@@ -589,6 +589,7 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "cap-rand",
  "cap-std",
  "test-log",
  "test-programs-macros",
