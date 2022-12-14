@@ -4,12 +4,12 @@ use crate::{wasi_filesystem, HostResult, WasiCtx};
 use std::io::{IoSlice, IoSliceMut};
 use wasi_common::file::TableFileExt;
 
-fn convert(error: wasi_common::Error) -> wasmtime::component::Error<wasi_filesystem::Errno> {
+fn convert(error: wasi_common::Error) -> anyhow::Error {
     if let Some(errno) = error.downcast_ref() {
         use wasi_common::Errno::*;
         use wasi_filesystem::Errno;
 
-        wasmtime::component::Error::new(match errno {
+        match errno {
             Acces => Errno::Access,
             Addrinuse => Errno::Addrinuse,
             Addrnotavail => Errno::Addrnotavail,
@@ -80,11 +80,12 @@ fn convert(error: wasi_common::Error) -> wasmtime::component::Error<wasi_filesys
             Xdev => Errno::Xdev,
             Success | Dom | Notcapable | Notsock | Proto | Protonosupport | Prototype | TooBig
             | Notconn => {
-                return error.into().into();
+                return error.into();
             }
-        })
+        }
+        .into()
     } else {
-        error.into().into()
+        error.into()
     }
 }
 
@@ -163,7 +164,7 @@ impl wasi_filesystem::WasiFilesystem for WasiCtx {
 
         buffer.truncate(bytes_read.try_into().unwrap());
 
-        Ok(buffer)
+        Ok(Ok(buffer))
     }
 
     async fn pwrite(
@@ -179,7 +180,7 @@ impl wasi_filesystem::WasiFilesystem for WasiCtx {
             .await
             .map_err(convert)?;
 
-        Ok(wasi_filesystem::Size::try_from(bytes_written).unwrap())
+        Ok(Ok(wasi_filesystem::Size::try_from(bytes_written).unwrap()))
     }
 
     async fn readdir(
