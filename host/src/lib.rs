@@ -22,8 +22,7 @@ pub fn add_to_linker<T: Send>(
     wasi_clocks::add_to_linker(l, f)?;
     wasi_default_clocks::add_to_linker(l, f)?;
     wasi_filesystem::add_to_linker(l, f)?;
-    wasi_stdout::add_to_linker(l, f)?;
-    wasi_stderr::add_to_linker(l, f)?;
+    wasi_logging::add_to_linker(l, f)?;
     wasi_poll::add_to_linker(l, f)?;
     wasi_random::add_to_linker(l, f)?;
     wasi_tcp::add_to_linker(l, f)?;

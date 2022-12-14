@@ -1,14 +1,14 @@
 #![allow(unused_variables)] // TODO: remove this when more things are implemented
 
 use crate::bindings::{
-    wasi_clocks, wasi_default_clocks, wasi_exit, wasi_filesystem, wasi_poll, wasi_random,
-    wasi_stderr, wasi_stdout, wasi_tcp,
+    wasi_clocks, wasi_default_clocks, wasi_exit, wasi_filesystem, wasi_logging, wasi_poll,
+    wasi_random, wasi_tcp,
 };
 use core::arch::wasm32::unreachable;
 use core::cell::{Cell, RefCell, UnsafeCell};
 use core::ffi::c_void;
 use core::mem::{self, forget, replace, size_of, ManuallyDrop, MaybeUninit};
-use core::ptr::{self, copy_nonoverlapping, null_mut, NonNull};
+use core::ptr::{self, copy_nonoverlapping, null_mut};
 use core::slice;
 use wasi::*;
 use wasi_poll::WasiFuture;
@@ -923,9 +923,6 @@ pub unsafe extern "C" fn fd_write(
     let len = (*iovs_ptr).buf_len;
     let bytes = slice::from_raw_parts(ptr, len);
 
-    // The equivalent of `&[]` but without creating a static init.
-    let context = slice::from_raw_parts(NonNull::dangling().as_ptr(), 0);
-
     State::with(|state| match state.get(fd)? {
         Descriptor::File(file) => {
             let bytes = wasi_filesystem::pwrite(file.fd, bytes, file.position.get())?;
@@ -933,13 +930,9 @@ pub unsafe extern "C" fn fd_write(
             file.position.set(file.position.get() + u64::from(bytes));
             Ok(())
         }
-        Descriptor::StdoutLog => {
-            wasi_stdout::log(wasi_stdout::Level::Info, context, bytes);
-            *nwritten = len;
-            Ok(())
-        }
-        Descriptor::StderrLog => {
-            wasi_stderr::log(wasi_stderr::Level::Info, context, bytes);
+        Descriptor::StderrLog | Descriptor::StdoutLog => {
+            let context: [u8; 3] = [b'I', b'/', b'O'];
+            wasi_logging::log(wasi_logging::Level::Info, &context, bytes);
             *nwritten = len;
             Ok(())
         }

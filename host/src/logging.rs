@@ -1,29 +1,16 @@
 #![allow(unused_variables)]
 
-use crate::{wasi_stderr, wasi_stdout, WasiCtx};
+use crate::{wasi_logging, WasiCtx};
 
 #[async_trait::async_trait]
-impl wasi_stdout::WasiStdout for WasiCtx {
+impl wasi_logging::WasiLogging for WasiCtx {
     async fn log(
         &mut self,
-        _level: wasi_stdout::Level,
-        _context: String,
+        level: wasi_logging::Level,
+        context: String,
         message: String,
     ) -> anyhow::Result<()> {
-        print!("{}", message);
-        Ok(())
-    }
-}
-
-#[async_trait::async_trait]
-impl wasi_stderr::WasiStderr for WasiCtx {
-    async fn log(
-        &mut self,
-        _level: wasi_stderr::Level,
-        _context: String,
-        message: String,
-    ) -> anyhow::Result<()> {
-        eprint!("{}", message);
+        println!("{:?} {}: {}", level, context, message);
         Ok(())
     }
 }

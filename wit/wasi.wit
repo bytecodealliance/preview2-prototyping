@@ -1036,9 +1036,8 @@ interface wasi-tcp {
 world wasi {
   import wasi-clocks: wasi-clocks
   import wasi-default-clocks: wasi-default-clocks
+  import wasi-logging: wasi-logging
   import wasi-filesystem: wasi-filesystem
-  import wasi-stdout: wasi-logging
-  import wasi-stderr: wasi-logging
   import wasi-random: wasi-random
   import wasi-poll: wasi-poll
   import wasi-tcp: wasi-tcp
