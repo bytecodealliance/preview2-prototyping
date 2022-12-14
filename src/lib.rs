@@ -1,8 +1,8 @@
 #![allow(unused_variables)] // TODO: remove this when more things are implemented
 
 use crate::bindings::{
-    wasi_clocks, wasi_default_clocks, wasi_filesystem, wasi_logging, wasi_poll, wasi_random,
-    wasi_tcp,
+    wasi_clocks, wasi_default_clocks, wasi_exit, wasi_filesystem, wasi_poll, wasi_random,
+    wasi_stderr, wasi_stdout, wasi_tcp,
 };
 use core::arch::wasm32::unreachable;
 use core::cell::{Cell, RefCell, UnsafeCell};
@@ -921,23 +921,23 @@ pub unsafe extern "C" fn fd_write(
 
     let ptr = (*iovs_ptr).buf;
     let len = (*iovs_ptr).buf_len;
+    let bytes = slice::from_raw_parts(ptr, len);
 
     State::with(|state| match state.get(fd)? {
         Descriptor::File(file) => {
-            let bytes = wasi_filesystem::pwrite(
-                file.fd,
-                slice::from_raw_parts(ptr, len),
-                file.position.get(),
-            )?;
+            let bytes = wasi_filesystem::pwrite(file.fd, bytes, file.position.get())?;
 
             *nwritten = bytes as usize;
             file.position.set(file.position.get() + u64::from(bytes));
             Ok(())
         }
-        Descriptor::StderrLog | Descriptor::StdoutLog => {
-            let bytes = slice::from_raw_parts(ptr, len);
-            let context: [u8; 3] = [b'I', b'/', b'O'];
-            wasi_logging::log(wasi_logging::Level::Info, &context, bytes);
+        Descriptor::StdoutLog => {
+            wasi_stdout::log(wasi_stdout::Level::Info, &[], bytes);
+            *nwritten = len;
+            Ok(())
+        }
+        Descriptor::StderrLog => {
+            wasi_stderr::log(wasi_stderr::Level::Info, &[], bytes);
             *nwritten = len;
             Ok(())
         }
@@ -1446,7 +1446,9 @@ pub unsafe extern "C" fn poll_oneoff(
 /// the environment.
 #[no_mangle]
 pub unsafe extern "C" fn proc_exit(rval: Exitcode) -> ! {
-    unreachable()
+    let status = if rval == 0 { Ok(()) } else { Err(()) };
+    wasi_exit::exit(status); // does not return
+    unreachable() // actually unreachable
 }
 
 /// Send a signal to the process of the calling thread.
