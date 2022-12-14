@@ -8,7 +8,7 @@ use core::arch::wasm32::unreachable;
 use core::cell::{Cell, RefCell, UnsafeCell};
 use core::ffi::c_void;
 use core::mem::{self, forget, replace, size_of, ManuallyDrop, MaybeUninit};
-use core::ptr::{self, copy_nonoverlapping, null_mut};
+use core::ptr::{self, copy_nonoverlapping, null_mut, NonNull};
 use core::slice;
 use wasi::*;
 use wasi_poll::WasiFuture;
@@ -534,7 +534,7 @@ pub unsafe extern "C" fn fd_pread(
         let len = (*iovs_ptr).buf_len;
         state.register_buffer(ptr, len);
 
-        let read_len = u32::try_from(len).unwrap();
+        let read_len = unwrap_result(u32::try_from(len));
         let file = state.get_file(fd)?;
         let data = wasi_filesystem::pread(file.fd, read_len, offset)?;
         assert_eq!(data.as_ptr(), ptr);
@@ -613,7 +613,7 @@ pub unsafe extern "C" fn fd_read(
 
         state.register_buffer(ptr, len);
 
-        let read_len = u32::try_from(len).unwrap();
+        let read_len = unwrap_result(u32::try_from(len));
         let file = match state.get(fd)? {
             Descriptor::File(f) => f,
             Descriptor::Closed(_) | Descriptor::StdoutLog | Descriptor::StderrLog => {
@@ -816,7 +816,7 @@ pub unsafe extern "C" fn fd_readdir(
             let dirent = wasi::Dirent {
                 d_next: self.cookie,
                 d_ino: ino.unwrap_or(0),
-                d_namlen: u32::try_from(name.len()).unwrap(),
+                d_namlen: unwrap_result(u32::try_from(name.len())),
                 d_type: type_.into(),
             };
             // Extend the lifetime of `name` to the `self.state` lifetime for
@@ -923,21 +923,23 @@ pub unsafe extern "C" fn fd_write(
     let len = (*iovs_ptr).buf_len;
     let bytes = slice::from_raw_parts(ptr, len);
 
+    // The equivalent of `&[]` but without creating a static init.
+    let context = slice::from_raw_parts(NonNull::dangling().as_ptr(), 0);
+
     State::with(|state| match state.get(fd)? {
         Descriptor::File(file) => {
             let bytes = wasi_filesystem::pwrite(file.fd, bytes, file.position.get())?;
-
             *nwritten = bytes as usize;
             file.position.set(file.position.get() + u64::from(bytes));
             Ok(())
         }
         Descriptor::StdoutLog => {
-            wasi_stdout::log(wasi_stdout::Level::Info, &[], bytes);
+            wasi_stdout::log(wasi_stdout::Level::Info, context, bytes);
             *nwritten = len;
             Ok(())
         }
         Descriptor::StderrLog => {
-            wasi_stderr::log(wasi_stderr::Level::Info, &[], bytes);
+            wasi_stderr::log(wasi_stderr::Level::Info, context, bytes);
             *nwritten = len;
             Ok(())
         }
