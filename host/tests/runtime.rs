@@ -43,8 +43,8 @@ async fn instantiate(path: &str) -> Result<(Store<WasiCtx>, Wasi)> {
 async fn run_hello_stdout(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
     wasi.command(
         &mut store,
-        0 as host::Descriptor,
-        1 as host::Descriptor,
+        0 as host::WasiStream,
+        1 as host::WasiStream,
         &["gussie", "sparky", "willa"],
         &[],
         &[],
@@ -57,8 +57,8 @@ async fn run_panic(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
     let r = wasi
         .command(
             &mut store,
-            0 as host::Descriptor,
-            1 as host::Descriptor,
+            0 as host::WasiStream,
+            1 as host::WasiStream,
             &[
                 "diesel",
                 "the",
@@ -81,8 +81,8 @@ async fn run_panic(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
 async fn run_args(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
     wasi.command(
         &mut store,
-        0 as host::Descriptor,
-        1 as host::Descriptor,
+        0 as host::WasiStream,
+        1 as host::WasiStream,
         &["hello", "this", "", "is an argument", "with 🚩 emoji"],
         &[],
         &[],
@@ -116,8 +116,8 @@ async fn run_random(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
 
     wasi.command(
         &mut store,
-        0 as host::Descriptor,
-        1 as host::Descriptor,
+        0 as host::WasiStream,
+        1 as host::WasiStream,
         &[],
         &[],
         &[],
@@ -164,8 +164,8 @@ async fn run_time(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
 
     wasi.command(
         &mut store,
-        0 as host::Descriptor,
-        1 as host::Descriptor,
+        0 as host::WasiStream,
+        1 as host::WasiStream,
         &[],
         &[],
         &[],
@@ -183,8 +183,8 @@ async fn run_stdin(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
 
     wasi.command(
         &mut store,
-        0 as host::Descriptor,
-        1 as host::Descriptor,
+        0 as host::WasiStream,
+        1 as host::WasiStream,
         &[],
         &[],
         &[],

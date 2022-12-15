@@ -1,18 +1,127 @@
 #![allow(unused_variables)]
 
 use crate::{
-    wasi_poll::{WasiFuture, WasiPoll},
-    WasiCtx,
+    wasi_poll::{self, Size, StreamError, WasiFuture, WasiPoll, WasiStream},
+    HostResult, WasiCtx,
 };
-use anyhow::Result;
+use wasi_common::stream::TableStreamExt;
+
+fn convert(error: wasi_common::Error) -> wasmtime::component::Error<StreamError> {
+    if let Some(errno) = error.downcast_ref() {
+        wasmtime::component::Error::new(wasi_poll::StreamError {})
+    } else {
+        error.into().into()
+    }
+}
 
 #[async_trait::async_trait]
 impl WasiPoll for WasiCtx {
-    async fn drop_future(&mut self, future: WasiFuture) -> Result<()> {
+    async fn drop_future(&mut self, future: WasiFuture) -> anyhow::Result<()> {
         todo!()
     }
 
-    async fn poll_oneoff(&mut self, futures: Vec<WasiFuture>) -> Result<Vec<u8>> {
+    async fn poll_oneoff(&mut self, futures: Vec<WasiFuture>) -> anyhow::Result<Vec<u8>> {
+        todo!()
+    }
+
+    async fn drop_stream(&mut self, stream: WasiStream) -> anyhow::Result<()> {
+        todo!()
+    }
+
+    async fn read_stream(
+        &mut self,
+        stream: WasiStream,
+        len: Size,
+    ) -> HostResult<Vec<u8>, StreamError> {
+        let s: &mut Box<dyn wasi_common::WasiStream> = self
+            .table()
+            .get_stream_mut(u32::from(stream))
+            .map_err(convert)?;
+
+        let mut buffer = vec![0; len.try_into().unwrap()];
+
+        let bytes_read: u64 = s.read(&mut buffer).await.map_err(convert)?;
+
+        Ok(buffer)
+    }
+
+    async fn write_stream(
+        &mut self,
+        stream: WasiStream,
+        bytes: Vec<u8>,
+    ) -> HostResult<Size, StreamError> {
+        let s: &mut Box<dyn wasi_common::WasiStream> = self
+            .table()
+            .get_stream_mut(u32::from(stream))
+            .map_err(convert)?;
+
+        let bytes_written: u64 = s.write(&bytes).await.map_err(convert)?;
+
+        Ok(Size::try_from(bytes_written).unwrap())
+    }
+
+    async fn skip_stream(&mut self, stream: WasiStream, len: u64) -> HostResult<u64, StreamError> {
+        let s: &mut Box<dyn wasi_common::WasiStream> = self
+            .table()
+            .get_stream_mut(u32::from(stream))
+            .map_err(convert)?;
+
+        let bytes_skipped: u64 = s.skip(len).await.map_err(convert)?;
+
+        Ok(bytes_skipped)
+    }
+
+    async fn write_repeated_stream(
+        &mut self,
+        stream: WasiStream,
+        byte: u8,
+        len: u64,
+    ) -> HostResult<u64, StreamError> {
+        let s: &mut Box<dyn wasi_common::WasiStream> = self
+            .table()
+            .get_stream_mut(u32::from(stream))
+            .map_err(convert)?;
+
+        let bytes_written: u64 = s.write_repeated(byte, len).await.map_err(convert)?;
+
+        Ok(bytes_written)
+    }
+
+    async fn splice_stream(
+        &mut self,
+        src: WasiStream,
+        dst: WasiStream,
+        len: u64,
+    ) -> HostResult<u64, StreamError> {
+        // TODO: We can't get two streams at the same time because they both
+        // carry the exclusive lifetime of `self`. When [`get_many_mut`] is
+        // stabilized, that could allow us to add a `get_many_stream_mut` or
+        // so which lets us do this.
+        //
+        // [`get_many_mut`]: https://doc.rust-lang.org/stable/std/collections/hash_map/struct.HashMap.html#method.get_many_mut
+        /*
+        let s: &mut Box<dyn wasi_common::WasiStream> = self
+            .table()
+            .get_stream_mut(u32::from(src))
+            .map_err(convert)?;
+        let d: &mut Box<dyn wasi_common::WasiStream> = self
+            .table()
+            .get_stream_mut(u32::from(dst))
+            .map_err(convert)?;
+
+        let bytes_spliced: u64 = s.splice(&mut **d, len).await.map_err(convert)?;
+
+        Ok(bytes_spliced)
+        */
+
+        todo!()
+    }
+
+    async fn subscribe_read(&mut self, stream: WasiStream) -> anyhow::Result<WasiFuture> {
+        todo!()
+    }
+
+    async fn subscribe_write(&mut self, stream: WasiStream) -> anyhow::Result<WasiFuture> {
         todo!()
     }
 }

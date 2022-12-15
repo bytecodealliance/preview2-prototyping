@@ -1,8 +1,13 @@
 interface command {
+  /// TODO: `use` the `wasi-poll` version
+  type wasi-stream = u32
+
+  /// TODO: `use` the `wasi-filesystem` version
   type descriptor = u32
+
   command: func(
-    stdin: descriptor,
-    stdout: descriptor,
+    stdin: wasi-stream,
+    stdout: wasi-stream,
     args: list<string>,
     env-vars: list<tuple<string, string>>,
     preopens: list<tuple<descriptor, string>>
@@ -50,7 +55,8 @@ interface wasi-clocks {
       nanoseconds: u32,
   }
 
-  /// An asynchronous operation. In the future, this will be replaced by a handle type.
+  /// An asynchronous operation. See the comments on `wasi-future` in the
+  /// `wasi-poll` interface for details.
   /// TODO: `use` the `wasi-poll` version
   type wasi-future = u32
 
@@ -142,6 +148,23 @@ interface wasi-logging {
   log: func(level: level, context: string, message: string)
 }
 
+/// # Prototype stderr API
+///
+/// This is a simple non-line-aware synchronous infallible output device,
+/// suitable for implementing stderr.
+interface wasi-stderr {
+    /// Print text to stderr.
+    print: func(message: string)
+
+    /// Test whether stderr is known to be a terminal.
+    ///
+    /// This is similar to `isatty` in POSIX.
+    is-terminal: func() -> bool
+
+    /// If stderr is a terminal and the number of columns can be determined,
+    /// return it.
+    num-columns: func() -> option<u16>
+}
 
 /// # WASI Random API
 ///
@@ -204,6 +227,9 @@ interface wasi-filesystem {
   /// A directory entry stream. In the future, this will be replaced by an
   /// actual stream.
   type dir-entry-stream = u32
+
+  /// TODO: `use` the `wasi-poll` version
+  type wasi-stream = u32
 
   /// Size of a range of bytes in memory.
   type size = u32
@@ -517,16 +543,6 @@ interface wasi-filesystem {
       no-reuse,
   }
 
-  /// The position relative to which to set the offset of the descriptor.
-  variant seek-from {
-      /// Seek relative to start-of-file.
-      set(filesize),
-      /// Seek relative to current position.
-      cur(filedelta),
-      /// Seek relative to end-of-file.
-      end(filesize),
-  }
-
   /// Provide file advisory information on a descriptor.
   ///
   /// This is similar to `posix_fadvise` in POSIX.
@@ -613,7 +629,36 @@ interface wasi-filesystem {
       mtim: new-timestamp,
   ) -> result<_, errno>
 
-  /// Read from a descriptor, without using and updating the descriptor's offset.
+  /// Return a stream for reading from a file.
+  ///
+  /// Note: This allows using `read-stream`, which is similar to `read` in POSIX.
+  read-via-stream: func(
+      /// The resource to operate on.
+      fd: descriptor,
+      /// The offset within the file at which to start reading.
+      offset: filesize,
+  ) -> result<wasi-stream, errno>
+
+  /// Return a stream for writing to a file.
+  ///
+  /// Note: This allows using `write-stream`, which is similar to `write` in POSIX.
+  write-via-stream: func(
+      /// The resource to operate on.
+      fd: descriptor,
+      /// The offset within the file at which to start writing.
+      offset: filesize,
+  ) -> result<wasi-stream, errno>
+
+  /// Return a stream for appending to a file.
+  ///
+  /// Note: This allows using `write-stream`, which is similar to `write` with
+  /// `O_APPEND` in in POSIX.
+  append-via-stream: func(
+      /// The resource to operate on.
+      fd: descriptor,
+  ) -> result<wasi-stream, errno>
+
+  /// Read from a file at a given offset.
   ///
   /// Note: This is similar to `pread` in POSIX.
   pread: func(
@@ -625,7 +670,7 @@ interface wasi-filesystem {
       offset: filesize,
   ) -> result<list<u8>, errno>
 
-  /// Write to a descriptor, without using and updating the descriptor's offset.
+  /// Write to a file at a given offset.
   ///
   /// Note: This is similar to `pwrite` in POSIX.
   pwrite: func(
@@ -649,20 +694,6 @@ interface wasi-filesystem {
   /// Read a single directory entry from a `dir-entry-stream`.
   read-dir-entry: func(dir-stream: dir-entry-stream) -> result<option<dir-entry>, errno>
 
-  /// Move the offset of a descriptor.
-  ///
-  /// The meaning of `seek` on a directory is unspecified.
-  ///
-  /// Returns new offset of the descriptor, relative to the start of the file.
-  ///
-  /// Note: This is similar to `lseek` in POSIX.
-  seek: func(
-      /// The resource to operate on.
-      fd: descriptor,
-      /// The method to compute the new offset.
-      %from: seek-from,
-  ) -> result<filesize, errno>
-
   /// Synchronize the data and metadata of a file to disk.
   ///
   /// Note: This is similar to `fsync` in POSIX.
@@ -670,16 +701,6 @@ interface wasi-filesystem {
       /// The resource to operate on.
       fd: descriptor,
   ) -> result<_, errno>
-
-  /// Return the current offset of a descriptor.
-  ///
-  /// Returns the current offset of the descriptor, relative to the start of the file.
-  ///
-  /// Note: This is similar to `lseek(fd, 0, SEEK_CUR)` in POSIX.
-  tell: func(
-      /// The resource to operate on.
-      fd: descriptor,
-  ) -> result<filesize, errno>
 
   /// Create a directory.
   ///
@@ -980,11 +1001,88 @@ interface wasi-filesystem {
 /// WASI Poll is a poll API intended to let users wait for I/O events on
 /// multiple handles at once.
 interface wasi-poll {
-  /// An asynchronous operation. In the future, this will be replaced by a handle type.
+  /// A "pseudo-future".
+  ///
+  /// This conceptually represents a `future<_>`, and serves as temporary
+  /// scaffolding until component-model's async features are ready.
+  ///
+  /// In the shorter term, it is a `u32` which will be replaced by a handle
+  /// when the component-model handles and resource features are ready.
   type wasi-future = u32
+
+  /// A "pseudo-stream".
+  ///
+  /// This conceptually represents a `stream<u8, _>`, and serves as temporary
+  /// scaffolding until component-model's async features are ready.
+  ///
+  /// In the shorter term, it is a `u32` which will be replaced by a handle
+  /// when the component-model handles and resource features are ready.
+  type wasi-stream = u32
 
   /// Dispose of the specified future, after which it may no longer be used.
   drop-future: func(f: wasi-future)
+
+  /// Dispose of the specified stream, after which it may no longer be used.
+  drop-stream: func(f: wasi-stream)
+
+  /// Size of a range of bytes in memory.
+  type size = u32
+
+  /// FIXME: This should just be `_` in the `result`'s below, but in the
+  /// bindings, `()` doesn't impl `std::error::Error`.
+  record stream-error {}
+
+  /// Read bytes from a stream.
+  read-stream: func(
+      /// The stream to operate on.
+      %stream: wasi-stream,
+      /// The maximum number of bytes to read.
+      len: size,
+  ) -> result<list<u8>, stream-error>
+
+  /// Write bytes to a stream.
+  write-stream: func(
+      /// The stream to operate on.
+      %stream: wasi-stream,
+      /// Data to write
+      buf: list<u8>,
+  ) -> result<size, stream-error>
+
+  /// Skip bytes from a stream.
+  skip-stream: func(
+      /// The stream to operate on.
+      %stream: wasi-stream,
+      /// The maximum number of bytes to read.
+      len: u64,
+  ) -> result<u64, stream-error>
+
+  /// Write a byte multiple times to a stream.
+  write-repeated-stream: func(
+      /// The stream to operate on.
+      %stream: wasi-stream,
+      /// The byte to write
+      byte: u8,
+      /// The number of times to write it.
+      len: u64,
+  ) -> result<u64, stream-error>
+
+  /// Read from one stream and write to another.
+  splice-stream: func(
+      /// The stream to read from.
+      src: wasi-stream,
+      /// The stream to write to.
+      dst: wasi-stream,
+      /// The number of bytes to splice.
+      len: u64,
+  ) -> result<u64, stream-error>
+
+  /// Create a future which will resolve once either the specified stream has bytes
+  /// available to read or the other end of the stream has been closed.
+  subscribe-read: func(s: wasi-stream) -> wasi-future
+
+  /// Create a future which will resolve once either the specified stream is ready
+  /// to accept bytes or the other end of the stream has been closed.
+  subscribe-write: func(s: wasi-stream) -> wasi-future
 
   /// Poll for completion on a set of futures.
   ///
@@ -1007,7 +1105,8 @@ interface wasi-tcp {
   /// A socket pseudo-handle. In the future, this will be replaced by a handle type.
   type socket = u32
 
-  /// An asynchronous operation. In the future, this will be replaced by a handle type.
+  /// An asynchronous operation. See the comments on `wasi-future` in the
+  /// `wasi-poll` interface for details.
   // TODO: `use` the `wasi-poll` version
   type wasi-future = u32
 
@@ -1038,20 +1137,13 @@ interface wasi-tcp {
 
   /// Query the specified `socket` for the number of bytes ready to be accepted.
   bytes-writable: func(s: socket) -> result<bytes-result, error>
-
-  /// Create a future which will resolve once either the specified socket has bytes
-  /// available to read or the other end of the stream has been closed.
-  subscribe-read: func(s: socket) -> wasi-future
-
-  /// Create a future which will resolve once either the specified socket is ready
-  /// to accept bytes or the other end of the stream has been closed.
-  subscribe-write: func(s: socket) -> wasi-future
 }
 
 world wasi {
   import wasi-clocks: wasi-clocks
   import wasi-default-clocks: wasi-default-clocks
   import wasi-logging: wasi-logging
+  import wasi-stderr: wasi-stderr
   import wasi-filesystem: wasi-filesystem
   import wasi-random: wasi-random
   import wasi-poll: wasi-poll

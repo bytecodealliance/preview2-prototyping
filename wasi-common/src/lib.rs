@@ -59,6 +59,7 @@ pub mod file;
 pub mod pipe;
 pub mod random;
 pub mod sched;
+pub mod stream;
 pub mod table;
 
 pub use cap_rand::RngCore;
@@ -68,4 +69,5 @@ pub use dir::WasiDir;
 pub use error::{Errno, Error, ErrorExt, I32Exit};
 pub use file::WasiFile;
 pub use sched::{Poll, WasiSched};
+pub use stream::WasiStream;
 pub use table::Table;

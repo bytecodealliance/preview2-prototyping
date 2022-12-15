@@ -2,6 +2,7 @@ use crate::clocks::WasiClocks;
 use crate::dir::WasiDir;
 use crate::file::WasiFile;
 use crate::sched::WasiSched;
+use crate::stream::WasiStream;
 use crate::table::Table;
 use crate::Error;
 use cap_rand::RngCore;
@@ -36,6 +37,10 @@ impl WasiCtx {
         self.table().insert_at(fd, Box::new(file));
     }
 
+    pub fn insert_stream(&mut self, fd: u32, stream: Box<dyn WasiStream>) {
+        self.table().insert_at(fd, Box::new(stream));
+    }
+
     pub fn push_file(&mut self, file: Box<dyn WasiFile>) -> Result<u32, Error> {
         self.table().push(Box::new(file))
     }
@@ -52,15 +57,15 @@ impl WasiCtx {
         &mut self.table
     }
 
-    pub fn set_stdin(&mut self, f: Box<dyn WasiFile>) {
-        self.insert_file(0, f);
+    pub fn set_stdin(&mut self, s: Box<dyn WasiStream>) {
+        self.insert_stream(0, s);
     }
 
-    pub fn set_stdout(&mut self, f: Box<dyn WasiFile>) {
-        self.insert_file(1, f);
+    pub fn set_stdout(&mut self, s: Box<dyn WasiStream>) {
+        self.insert_stream(1, s);
     }
 
-    pub fn set_stderr(&mut self, f: Box<dyn WasiFile>) {
-        self.insert_file(2, f);
+    pub fn set_stderr(&mut self, s: Box<dyn WasiStream>) {
+        self.insert_stream(2, s);
     }
 }

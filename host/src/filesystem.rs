@@ -1,5 +1,6 @@
 #![allow(unused_variables)]
 
+use crate::wasi_poll::WasiStream;
 use crate::{wasi_filesystem, HostResult, WasiCtx};
 use std::{
     io::{IoSlice, IoSliceMut},
@@ -294,39 +295,10 @@ impl wasi_filesystem::WasiFilesystem for WasiCtx {
         todo!()
     }
 
-    async fn seek(
-        &mut self,
-        fd: wasi_filesystem::Descriptor,
-        from: wasi_filesystem::SeekFrom,
-    ) -> HostResult<wasi_filesystem::Filesize, wasi_filesystem::Errno> {
-        use std::io::SeekFrom;
-
-        let from = match from {
-            wasi_filesystem::SeekFrom::Cur(offset) => SeekFrom::Current(offset),
-            wasi_filesystem::SeekFrom::End(offset) => SeekFrom::End(offset.try_into().unwrap()),
-            wasi_filesystem::SeekFrom::Set(offset) => SeekFrom::Start(offset),
-        };
-
-        Ok(self
-            .table()
-            .get_file_mut(fd)
-            .map_err(convert)?
-            .seek(from)
-            .await
-            .map_err(convert)?)
-    }
-
     async fn sync(
         &mut self,
         fd: wasi_filesystem::Descriptor,
     ) -> HostResult<(), wasi_filesystem::Errno> {
-        todo!()
-    }
-
-    async fn tell(
-        &mut self,
-        fd: wasi_filesystem::Descriptor,
-    ) -> HostResult<wasi_filesystem::Filesize, wasi_filesystem::Errno> {
         todo!()
     }
 
@@ -552,6 +524,29 @@ impl wasi_filesystem::WasiFilesystem for WasiCtx {
         &mut self,
         fd: wasi_filesystem::Descriptor,
     ) -> HostResult<(), wasi_filesystem::Errno> {
+        todo!()
+    }
+
+    async fn read_via_stream(
+        &mut self,
+        fd: wasi_filesystem::Descriptor,
+        offset: u64,
+    ) -> HostResult<WasiStream, wasi_filesystem::Errno> {
+        todo!()
+    }
+
+    async fn write_via_stream(
+        &mut self,
+        fd: wasi_filesystem::Descriptor,
+        offset: u64,
+    ) -> HostResult<WasiStream, wasi_filesystem::Errno> {
+        todo!()
+    }
+
+    async fn append_via_stream(
+        &mut self,
+        fd: wasi_filesystem::Descriptor,
+    ) -> HostResult<WasiStream, wasi_filesystem::Errno> {
         todo!()
     }
 }

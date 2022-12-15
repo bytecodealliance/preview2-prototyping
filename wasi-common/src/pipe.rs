@@ -8,7 +8,8 @@
 //! but the virtual pipes can be instantiated with any `Read` or `Write` type.
 //!
 use crate::file::{FdFlags, FileType, WasiFile};
-use crate::Error;
+use crate::stream::WasiStream;
+use crate::{Error, ErrorExt};
 use std::any::Any;
 use std::convert::TryInto;
 use std::io::{self, Read, Write};
@@ -120,6 +121,53 @@ impl<R: Read + Any + Send + Sync> WasiFile for ReadPipe<R> {
     }
 }
 
+#[async_trait::async_trait]
+impl<R: Read + Any + Send + Sync> WasiStream for ReadPipe<R> {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    #[cfg(unix)]
+    fn pollable_read(&self) -> Option<rustix::fd::BorrowedFd> {
+        None
+    }
+
+    #[cfg(windows)]
+    fn pollable_read(&self) -> Option<io_extras::os::windows::RawHandleOrSocket> {
+        None
+    }
+
+    async fn read(&mut self, _buf: &mut [u8]) -> Result<u64, Error> {
+        Err(Error::badf())
+    }
+
+    // TODO: Optimize for pipes.
+    /*
+    async fn splice(
+        &mut self,
+        dst: &mut dyn WasiStream,
+        nelem: u64,
+    ) -> Result<u64, Error> {
+        todo!()
+    }
+
+    async fn skip(
+        &mut self,
+        nelem: u64,
+    ) -> Result<u64, Error> {
+        todo!()
+    }
+
+    async fn write_repeated(
+        &mut self,
+        byte: u8,
+        nelem: u64,
+    ) -> Result<u64, Error> {
+        todo!()
+    }
+    */
+}
+
 /// A virtual pipe write end.
 ///
 /// ```no_run
@@ -204,5 +252,12 @@ impl<W: Write + Any + Send + Sync> WasiFile for WritePipe<W> {
     async fn write_vectored<'a>(&mut self, bufs: &[io::IoSlice<'a>]) -> Result<u64, Error> {
         let n = self.borrow().write_vectored(bufs)?;
         Ok(n.try_into()?)
+    }
+}
+
+#[async_trait::async_trait]
+impl<W: Write + Any + Send + Sync> WasiStream for WritePipe<W> {
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }

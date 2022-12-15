@@ -48,7 +48,7 @@ pub use sched::sched_ctx;
 
 use crate::net::Socket;
 use cap_rand::{Rng, RngCore, SeedableRng};
-use wasi_common::{table::Table, WasiCtx, WasiFile};
+use wasi_common::{file::WasiFile, stream::WasiStream, table::Table, WasiCtx};
 
 pub struct WasiCtxBuilder(WasiCtx);
 
@@ -62,15 +62,15 @@ impl WasiCtxBuilder {
             table,
         ))
     }
-    pub fn stdin(mut self, f: Box<dyn WasiFile>) -> Self {
+    pub fn stdin(mut self, f: Box<dyn WasiStream>) -> Self {
         self.0.set_stdin(f);
         self
     }
-    pub fn stdout(mut self, f: Box<dyn WasiFile>) -> Self {
+    pub fn stdout(mut self, f: Box<dyn WasiStream>) -> Self {
         self.0.set_stdout(f);
         self
     }
-    pub fn stderr(mut self, f: Box<dyn WasiFile>) -> Self {
+    pub fn stderr(mut self, f: Box<dyn WasiStream>) -> Self {
         self.0.set_stderr(f);
         self
     }

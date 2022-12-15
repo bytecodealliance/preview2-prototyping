@@ -15,6 +15,7 @@ use system_interface::io::IsReadWrite;
 use system_interface::io::ReadReady;
 use wasi_common::{
     file::{FdFlags, FileType, RiFlags, RoFlags, SdFlags, SiFlags, WasiFile},
+    stream::WasiStream,
     Error, ErrorExt,
 };
 
@@ -209,12 +210,12 @@ macro_rules! wasi_stream_write_impl {
                 &mut self,
                 bufs: &mut [io::IoSliceMut<'a>],
             ) -> Result<u64, Error> {
-                use std::io::Read;
+                use io::Read;
                 let n = Read::read_vectored(&mut &*self.as_socketlike_view::<$std_ty>(), bufs)?;
                 Ok(n.try_into()?)
             }
             async fn write_vectored<'a>(&mut self, bufs: &[io::IoSlice<'a>]) -> Result<u64, Error> {
-                use std::io::Write;
+                use io::Write;
                 let n = Write::write_vectored(&mut &*self.as_socketlike_view::<$std_ty>(), bufs)?;
                 Ok(n.try_into()?)
             }
@@ -245,7 +246,7 @@ macro_rules! wasi_stream_write_impl {
 
             async fn sock_recv<'a>(
                 &mut self,
-                ri_data: &mut [std::io::IoSliceMut<'a>],
+                ri_data: &mut [io::IoSliceMut<'a>],
                 ri_flags: RiFlags,
             ) -> Result<(u64, RoFlags), Error> {
                 if (ri_flags & !(RiFlags::RECV_PEEK | RiFlags::RECV_WAITALL)) != RiFlags::empty() {
@@ -273,7 +274,7 @@ macro_rules! wasi_stream_write_impl {
 
             async fn sock_send<'a>(
                 &mut self,
-                si_data: &[std::io::IoSlice<'a>],
+                si_data: &[io::IoSlice<'a>],
                 si_flags: SiFlags,
             ) -> Result<u64, Error> {
                 if si_flags != SiFlags::empty() {
@@ -296,6 +297,60 @@ macro_rules! wasi_stream_write_impl {
                 };
                 self.0.shutdown(how)?;
                 Ok(())
+            }
+        }
+
+        #[async_trait::async_trait]
+        impl WasiStream for $ty {
+            fn as_any(&self) -> &dyn Any {
+                self
+            }
+            #[cfg(unix)]
+            fn pollable_read(&self) -> Option<rustix::fd::BorrowedFd> {
+                Some(self.0.as_fd())
+            }
+            #[cfg(unix)]
+            fn pollable_write(&self) -> Option<rustix::fd::BorrowedFd> {
+                Some(self.0.as_fd())
+            }
+
+            #[cfg(windows)]
+            fn pollable_read(&self) -> Option<io_extras::os::windows::RawHandleOrSocket> {
+                Some(self.0.as_raw_handle_or_socket())
+            }
+            #[cfg(windows)]
+            fn pollable_write(&self) -> Option<io_extras::os::windows::RawHandleOrSocket> {
+                Some(self.0.as_raw_handle_or_socket())
+            }
+
+            async fn read(&mut self, buf: &mut [u8]) -> Result<u64, Error> {
+                use io::Read;
+                let n = Read::read(&mut &*self.as_socketlike_view::<$std_ty>(), buf)?;
+                Ok(n.try_into()?)
+            }
+            async fn write(&mut self, buf: &[u8]) -> Result<u64, Error> {
+                use io::Write;
+                let n = Write::write(&mut &*self.as_socketlike_view::<$std_ty>(), buf)?;
+                Ok(n.try_into()?)
+            }
+            async fn splice(&mut self, dst: &mut dyn WasiStream, nelem: u64) -> Result<u64, Error> {
+                if let Some(handle) = dst.pollable_write() {
+                    let num = io::copy(
+                        &mut io::Read::take(&self.0, nelem),
+                        &mut &*handle.as_socketlike_view::<$std_ty>(),
+                    )?;
+                    Ok((num))
+                } else {
+                    WasiStream::splice(self, dst, nelem).await
+                }
+            }
+            async fn skip(&mut self, nelem: u64) -> Result<u64, Error> {
+                let num = io::copy(&mut io::Read::take(&self.0, nelem), &mut io::sink())?;
+                Ok(num)
+            }
+            async fn write_repeated(&mut self, byte: u8, nelem: u64) -> Result<u64, Error> {
+                let num = io::copy(&mut io::Read::take(io::repeat(byte), nelem), &mut self.0)?;
+                Ok(num)
             }
         }
         #[cfg(unix)]

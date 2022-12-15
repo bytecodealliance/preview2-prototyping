@@ -11,6 +11,7 @@ use system_interface::{
 };
 use wasi_common::{
     file::{Advice, FdFlags, FileType, Filestat, WasiFile},
+    stream::WasiStream,
     Error, ErrorExt,
 };
 
@@ -122,7 +123,7 @@ impl WasiFile for File {
         let n = self.0.write_vectored_at(bufs, offset)?;
         Ok(n.try_into()?)
     }
-    async fn seek(&mut self, pos: std::io::SeekFrom) -> Result<u64, Error> {
+    async fn seek(&mut self, pos: io::SeekFrom) -> Result<u64, Error> {
         Ok(self.0.seek(pos)?)
     }
     async fn peek(&mut self, buf: &mut [u8]) -> Result<u64, Error> {
@@ -135,6 +136,93 @@ impl WasiFile for File {
     fn isatty(&mut self) -> bool {
         self.0.is_terminal()
     }
+}
+
+pub struct FileStream {
+    // Which file are we streaming?
+    file: cap_std::fs::File,
+
+    // Where in the file are we?
+    position: u64,
+
+    // Reading or writing?
+    reading: bool,
+}
+
+#[async_trait::async_trait]
+impl WasiStream for FileStream {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    #[cfg(unix)]
+    fn pollable_read(&self) -> Option<rustix::fd::BorrowedFd> {
+        if self.reading {
+            Some(self.file.as_fd())
+        } else {
+            None
+        }
+    }
+    #[cfg(unix)]
+    fn pollable_write(&self) -> Option<rustix::fd::BorrowedFd> {
+        if self.reading {
+            None
+        } else {
+            Some(self.file.as_fd())
+        }
+    }
+
+    #[cfg(windows)]
+    fn pollable_read(&self) -> Option<io_extras::os::windows::RawHandleOrSocket> {
+        if self.reading {
+            Some(self.file.as_raw_handle_or_socket())
+        } else {
+            None
+        }
+    }
+    #[cfg(windows)]
+    fn pollable_write(&self) -> Option<io_extras::os::windows::RawHandleOrSocket> {
+        if self.reading {
+            None
+        } else {
+            Some(self.file.as_raw_handle_or_socket())
+        }
+    }
+
+    async fn read(&mut self, buf: &mut [u8]) -> Result<u64, Error> {
+        use system_interface::fs::FileIoExt;
+        let n = FileIoExt::read_at(&mut &self.file, buf, self.position)?.try_into()?;
+        self.position += n;
+        Ok(n)
+    }
+    async fn write(&mut self, buf: &[u8]) -> Result<u64, Error> {
+        use system_interface::fs::FileIoExt;
+        let n = FileIoExt::write_at(&mut &self.file, buf, self.position)?.try_into()?;
+        self.position += n;
+        Ok(n)
+    }
+    // TODO: Optimize for file streams.
+    /*
+    async fn splice(
+        &mut self,
+        dst: &mut dyn WasiStream,
+        nelem: u64,
+    ) -> Result<u64, Error> {
+        todo!()
+    }
+    async fn skip(
+        &mut self,
+        nelem: u64,
+    ) -> Result<u64, Error> {
+        todo!()
+    }
+    async fn write_repeated(
+        &mut self,
+        byte: u8,
+        nelem: u64,
+    ) -> Result<u64, Error> {
+        todo!()
+    }
+    */
 }
 
 pub fn filetype_from(ft: &cap_std::fs::FileType) -> FileType {

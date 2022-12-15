@@ -17,6 +17,7 @@ use io_lifetimes::{AsFd, BorrowedFd};
 use io_lifetimes::{AsHandle, BorrowedHandle};
 use wasi_common::{
     file::{FdFlags, FileType, WasiFile},
+    stream::WasiStream,
     Error, ErrorExt,
 };
 
@@ -35,7 +36,6 @@ impl WasiFile for Stdin {
     fn pollable(&self) -> Option<rustix::fd::BorrowedFd> {
         Some(self.0.as_fd())
     }
-
     #[cfg(windows)]
     fn pollable(&self) -> Option<io_extras::os::windows::RawHandleOrSocket> {
         Some(self.0.as_raw_handle_or_socket())
@@ -79,6 +79,61 @@ impl WasiFile for Stdin {
     fn isatty(&mut self) -> bool {
         self.0.is_terminal()
     }
+}
+#[async_trait::async_trait]
+impl WasiStream for Stdin {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    #[cfg(unix)]
+    fn pollable_read(&self) -> Option<rustix::fd::BorrowedFd> {
+        Some(self.0.as_fd())
+    }
+    #[cfg(unix)]
+    fn pollable_write(&self) -> Option<rustix::fd::BorrowedFd> {
+        None
+    }
+
+    #[cfg(windows)]
+    fn pollable_read(&self) -> Option<io_extras::os::windows::RawHandleOrSocket> {
+        Some(self.0.as_raw_handle_or_socket())
+    }
+    #[cfg(windows)]
+    fn pollable_write(&self) -> Option<io_extras::os::windows::RawHandleOrSocket> {
+        None
+    }
+
+    async fn read(&mut self, buf: &mut [u8]) -> Result<u64, Error> {
+        use std::io::Read;
+        let n = Read::read(&mut &*self.as_filelike_view::<cap_std::fs::File>(), buf)?;
+        Ok(n.try_into()?)
+    }
+    async fn write(&mut self, _buf: &[u8]) -> Result<u64, Error> {
+        Err(Error::badf())
+    }
+    // TODO: Optimize for stdio streams.
+    /*
+    async fn splice(
+        &mut self,
+        dst: &mut dyn WasiStream,
+        nelem: u64,
+    ) -> Result<u64, Error> {
+        todo!()
+    }
+    async fn skip(
+        &mut self,
+        nelem: u64,
+    ) -> Result<u64, Error> {
+        todo!()
+    }
+    async fn write_repeated(
+        &mut self,
+        byte: u8,
+        nelem: u64,
+    ) -> Result<u64, Error> {
+        todo!()
+    }
+    */
 }
 #[cfg(windows)]
 impl AsHandle for Stdin {
@@ -154,6 +209,55 @@ macro_rules! wasi_file_write_impl {
             fn isatty(&mut self) -> bool {
                 self.0.is_terminal()
             }
+        }
+        #[async_trait::async_trait]
+        impl WasiStream for $ty {
+            fn as_any(&self) -> &dyn Any {
+                self
+            }
+
+            #[cfg(unix)]
+            fn pollable_write(&self) -> Option<rustix::fd::BorrowedFd> {
+                Some(self.0.as_fd())
+            }
+            #[cfg(windows)]
+            fn pollable_write(&self) -> Option<io_extras::os::windows::RawHandleOrSocket> {
+                Some(self.0.as_raw_handle_or_socket())
+            }
+
+            async fn read(&mut self, buf: &mut [u8]) -> Result<u64, Error> {
+                use std::io::Read;
+                let n = Read::read(&mut &*self.as_filelike_view::<cap_std::fs::File>(), buf)?;
+                Ok(n.try_into()?)
+            }
+            async fn write(&mut self, buf: &[u8]) -> Result<u64, Error> {
+                use std::io::Write;
+                let n = Write::write(&mut &*self.as_filelike_view::<cap_std::fs::File>(), buf)?;
+                Ok(n.try_into()?)
+            }
+            // TODO: Optimize for stdio streams.
+            /*
+            async fn splice(
+                &mut self,
+                dst: &mut dyn WasiStream,
+                nelem: u64,
+            ) -> Result<u64, Error> {
+                todo!()
+            }
+            async fn skip(
+                &mut self,
+                nelem: u64,
+            ) -> Result<u64, Error> {
+                todo!()
+            }
+            async fn write_repeated(
+                &mut self,
+                byte: u8,
+                nelem: u64,
+            ) -> Result<u64, Error> {
+                todo!()
+            }
+            */
         }
         #[cfg(windows)]
         impl AsHandle for $ty {
