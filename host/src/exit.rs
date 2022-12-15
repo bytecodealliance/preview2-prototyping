@@ -9,6 +9,6 @@ impl wasi_exit::WasiExit for WasiCtx {
             Ok(()) => 0,
             Err(()) => 1,
         };
-        std::process::exit(status)
+        Err(anyhow::anyhow!(wasi_common::I32Exit(status)))
     }
 }
