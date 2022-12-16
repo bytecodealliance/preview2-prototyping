@@ -25,7 +25,8 @@ impl WasiPoll for WasiCtx {
     }
 
     async fn drop_stream(&mut self, stream: WasiStream) -> anyhow::Result<()> {
-        todo!()
+        self.table().delete(stream);
+        Ok(())
     }
 
     async fn read_stream(
