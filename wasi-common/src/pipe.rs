@@ -9,7 +9,7 @@
 //!
 use crate::file::{FdFlags, FileType, WasiFile};
 use crate::stream::WasiStream;
-use crate::{Error, ErrorExt};
+use crate::Error;
 use std::any::Any;
 use std::convert::TryInto;
 use std::io::{self, Read, Write};
@@ -127,18 +127,9 @@ impl<R: Read + Any + Send + Sync> WasiStream for ReadPipe<R> {
         self
     }
 
-    #[cfg(unix)]
-    fn pollable_read(&self) -> Option<rustix::fd::BorrowedFd> {
-        None
-    }
-
-    #[cfg(windows)]
-    fn pollable_read(&self) -> Option<io_extras::os::windows::RawHandleOrSocket> {
-        None
-    }
-
-    async fn read(&mut self, _buf: &mut [u8]) -> Result<u64, Error> {
-        Err(Error::badf())
+    async fn read(&mut self, buf: &mut [u8]) -> Result<u64, Error> {
+        let n = self.borrow().read(buf)?;
+        Ok(n.try_into()?)
     }
 
     // TODO: Optimize for pipes.
@@ -260,4 +251,35 @@ impl<W: Write + Any + Send + Sync> WasiStream for WritePipe<W> {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    async fn write(&mut self, buf: &[u8]) -> Result<u64, Error> {
+        let n = self.borrow().write(buf)?;
+        Ok(n.try_into()?)
+    }
+
+    // TODO: Optimize for pipes.
+    /*
+    async fn splice(
+        &mut self,
+        dst: &mut dyn WasiStream,
+        nelem: u64,
+    ) -> Result<u64, Error> {
+        todo!()
+    }
+
+    async fn skip(
+        &mut self,
+        nelem: u64,
+    ) -> Result<u64, Error> {
+        todo!()
+    }
+
+    async fn write_repeated(
+        &mut self,
+        byte: u8,
+        nelem: u64,
+    ) -> Result<u64, Error> {
+        todo!()
+    }
+    */
 }
