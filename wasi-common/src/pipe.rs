@@ -118,22 +118,15 @@ impl<R: Read + Any + Send + Sync> WasiStream for ReadPipe<R> {
     ) -> Result<u64, Error> {
         todo!()
     }
-
-    async fn skip(
-        &mut self,
-        nelem: u64,
-    ) -> Result<u64, Error> {
-        todo!()
-    }
-
-    async fn write_repeated(
-        &mut self,
-        byte: u8,
-        nelem: u64,
-    ) -> Result<u64, Error> {
-        todo!()
-    }
     */
+
+    async fn skip(&mut self, nelem: u64) -> Result<u64, Error> {
+        let num = io::copy(
+            &mut io::Read::take(&mut *self.borrow(), nelem),
+            &mut io::sink(),
+        )?;
+        Ok(num)
+    }
 
     async fn readable(&self) -> Result<(), Error> {
         Ok(())
@@ -234,22 +227,15 @@ impl<W: Write + Any + Send + Sync> WasiStream for WritePipe<W> {
     ) -> Result<u64, Error> {
         todo!()
     }
-
-    async fn skip(
-        &mut self,
-        nelem: u64,
-    ) -> Result<u64, Error> {
-        todo!()
-    }
-
-    async fn write_repeated(
-        &mut self,
-        byte: u8,
-        nelem: u64,
-    ) -> Result<u64, Error> {
-        todo!()
-    }
     */
+
+    async fn write_repeated(&mut self, byte: u8, nelem: u64) -> Result<u64, Error> {
+        let num = io::copy(
+            &mut io::Read::take(io::repeat(byte), nelem),
+            &mut *self.borrow(),
+        )?;
+        Ok(num)
+    }
 
     async fn readable(&self) -> Result<(), Error> {
         Err(Error::badf())

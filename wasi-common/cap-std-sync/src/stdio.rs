@@ -63,6 +63,7 @@ impl WasiStream for Stdin {
     fn is_write_vectored(&self) {
         false
     }
+
     // TODO: Optimize for stdio streams.
     /*
     async fn splice(
@@ -72,20 +73,13 @@ impl WasiStream for Stdin {
     ) -> Result<u64, Error> {
         todo!()
     }
-    async fn skip(
-        &mut self,
-        nelem: u64,
-    ) -> Result<u64, Error> {
-        todo!()
-    }
-    async fn write_repeated(
-        &mut self,
-        byte: u8,
-        nelem: u64,
-    ) -> Result<u64, Error> {
-        todo!()
-    }
     */
+
+    async fn skip(&mut self, nelem: u64) -> Result<u64, Error> {
+        let num = io::copy(&mut io::Read::take(&mut self.0, nelem), &mut io::sink())?;
+        Ok(num)
+    }
+
     async fn num_ready_bytes(&self) -> Result<u64, Error> {
         Ok(self.0.num_ready_bytes()?)
     }
@@ -169,20 +163,12 @@ macro_rules! wasi_file_write_impl {
             ) -> Result<u64, Error> {
                 todo!()
             }
-            async fn skip(
-                &mut self,
-                nelem: u64,
-            ) -> Result<u64, Error> {
-                todo!()
-            }
-            async fn write_repeated(
-                &mut self,
-                byte: u8,
-                nelem: u64,
-            ) -> Result<u64, Error> {
-                todo!()
-            }
             */
+
+            async fn write_repeated(&mut self, byte: u8, nelem: u64) -> Result<u64, Error> {
+                let num = io::copy(&mut io::Read::take(io::repeat(byte), nelem), &mut self.0)?;
+                Ok(num)
+            }
 
             async fn readable(&self) -> Result<(), Error> {
                 Err(Error::badf())

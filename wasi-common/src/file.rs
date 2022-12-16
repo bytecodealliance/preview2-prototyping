@@ -303,6 +303,7 @@ impl WasiStream for FileStream {
     fn is_write_vectored_at(&self) -> bool {
         self.file.is_write_vectored_at()
     }
+
     // TODO: Optimize for file streams.
     /*
     async fn splice(
@@ -312,12 +313,18 @@ impl WasiStream for FileStream {
     ) -> Result<u64, Error> {
         todo!()
     }
-    async fn skip(
-        &mut self,
-        nelem: u64,
-    ) -> Result<u64, Error> {
-        todo!()
+    */
+
+    async fn skip(&mut self, nelem: u64) -> Result<u64, Error> {
+        self.position = self
+            .position
+            .checked_add(nelem)
+            .ok_or_else(Error::overflow)?;
+        Ok(nelem)
     }
+
+    // TODO: Optimize for file streams.
+    /*
     async fn write_repeated(
         &mut self,
         byte: u8,
