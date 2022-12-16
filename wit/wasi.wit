@@ -3,6 +3,11 @@ interface command {
   command: func(stdin: descriptor, stdout: descriptor, args: list<string>)
 }
 
+interface wasi-exit {
+  /// Exit the curerent instance and any linked instances.
+  exit: func(status: result)
+}
+
 /// # WASI Clocks API
 ///
 /// WASI Clocks is a clock API intended to let users query the current time and
@@ -1036,6 +1041,7 @@ world wasi {
   import wasi-random: wasi-random
   import wasi-poll: wasi-poll
   import wasi-tcp: wasi-tcp
+  import wasi-exit: wasi-exit
 
   default export command
 }
