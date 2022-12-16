@@ -1,5 +1,5 @@
 use crate::clocks::WasiMonotonicClock;
-use crate::file::WasiFile;
+use crate::stream::WasiStream;
 use crate::Error;
 use cap_std::time::Instant;
 pub mod subscription;
@@ -56,13 +56,13 @@ impl<'a> Poll<'a> {
             ud,
         ));
     }
-    pub fn subscribe_read(&mut self, file: &'a dyn WasiFile, ud: Userdata) {
+    pub fn subscribe_read(&mut self, stream: &'a dyn WasiStream, ud: Userdata) {
         self.subs
-            .push((Subscription::Read(RwSubscription::new(file)), ud));
+            .push((Subscription::Read(RwSubscription::new(stream)), ud));
     }
-    pub fn subscribe_write(&mut self, file: &'a dyn WasiFile, ud: Userdata) {
+    pub fn subscribe_write(&mut self, stream: &'a dyn WasiStream, ud: Userdata) {
         self.subs
-            .push((Subscription::Write(RwSubscription::new(file)), ud));
+            .push((Subscription::Write(RwSubscription::new(stream)), ud));
     }
     pub fn results(self) -> Vec<(SubscriptionResult, Userdata)> {
         self.subs

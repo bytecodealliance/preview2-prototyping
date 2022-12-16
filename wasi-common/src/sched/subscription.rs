@@ -1,5 +1,5 @@
 use crate::clocks::WasiMonotonicClock;
-use crate::file::WasiFile;
+use crate::stream::WasiStream;
 use crate::Error;
 use bitflags::bitflags;
 use cap_std::time::{Duration, Instant};
@@ -11,13 +11,16 @@ bitflags! {
 }
 
 pub struct RwSubscription<'a> {
-    pub file: &'a dyn WasiFile,
+    pub stream: &'a dyn WasiStream,
     status: Option<Result<(u64, RwEventFlags), Error>>,
 }
 
 impl<'a> RwSubscription<'a> {
-    pub fn new(file: &'a dyn WasiFile) -> Self {
-        Self { file, status: None }
+    pub fn new(stream: &'a dyn WasiStream) -> Self {
+        Self {
+            stream,
+            status: None,
+        }
     }
     pub fn complete(&mut self, size: u64, flags: RwEventFlags) {
         self.status = Some(Ok((size, flags)))

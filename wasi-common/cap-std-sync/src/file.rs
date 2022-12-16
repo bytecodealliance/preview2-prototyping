@@ -5,13 +5,10 @@ use is_terminal::IsTerminal;
 use std::any::Any;
 use std::convert::TryInto;
 use std::io;
-use system_interface::{
-    fs::{FileIoExt, GetSetFdFlags},
-    io::{IoExt, ReadReady},
-};
+use system_interface::fs::{FileIoExt, GetSetFdFlags};
+use system_interface::io::IsReadWrite;
 use wasi_common::{
     file::{Advice, FdFlags, FileType, Filestat, WasiFile},
-    stream::WasiStream,
     Error, ErrorExt,
 };
 
@@ -37,6 +34,12 @@ impl WasiFile for File {
     fn pollable(&self) -> Option<io_extras::os::windows::RawHandleOrSocket> {
         Some(self.0.as_raw_handle_or_socket())
     }
+
+    async fn try_clone(&mut self) -> Result<Box<dyn WasiFile>, Error> {
+        let clone = self.0.try_clone()?;
+        Ok(Box::new(Self(clone)))
+    }
+
     async fn datasync(&mut self) -> Result<(), Error> {
         self.0.sync_data()?;
         Ok(())
@@ -99,8 +102,8 @@ impl WasiFile for File {
             .set_times(convert_systimespec(atime), convert_systimespec(mtime))?;
         Ok(())
     }
-    async fn read_vectored<'a>(&mut self, bufs: &mut [io::IoSliceMut<'a>]) -> Result<u64, Error> {
-        let n = self.0.read_vectored(bufs)?;
+    async fn read_at<'a>(&mut self, buf: &mut [u8], offset: u64) -> Result<u64, Error> {
+        let n = self.0.read_at(buf, offset)?;
         Ok(n.try_into()?)
     }
     async fn read_vectored_at<'a>(
@@ -111,8 +114,11 @@ impl WasiFile for File {
         let n = self.0.read_vectored_at(bufs, offset)?;
         Ok(n.try_into()?)
     }
-    async fn write_vectored<'a>(&mut self, bufs: &[io::IoSlice<'a>]) -> Result<u64, Error> {
-        let n = self.0.write_vectored(bufs)?;
+    fn is_read_vectored_at(&self) -> bool {
+        self.0.is_read_vectored_at()
+    }
+    async fn write_at<'a>(&mut self, buf: &[u8], offset: u64) -> Result<u64, Error> {
+        let n = self.0.write_at(buf, offset)?;
         Ok(n.try_into()?)
     }
     async fn write_vectored_at<'a>(
@@ -123,106 +129,28 @@ impl WasiFile for File {
         let n = self.0.write_vectored_at(bufs, offset)?;
         Ok(n.try_into()?)
     }
-    async fn seek(&mut self, pos: io::SeekFrom) -> Result<u64, Error> {
-        Ok(self.0.seek(pos)?)
-    }
-    async fn peek(&mut self, buf: &mut [u8]) -> Result<u64, Error> {
-        let n = self.0.peek(buf)?;
-        Ok(n.try_into()?)
-    }
-    async fn num_ready_bytes(&self) -> Result<u64, Error> {
-        Ok(self.0.num_ready_bytes()?)
+    fn is_write_vectored_at(&self) -> bool {
+        self.0.is_write_vectored_at()
     }
     fn isatty(&mut self) -> bool {
         self.0.is_terminal()
     }
-}
 
-pub struct FileStream {
-    // Which file are we streaming?
-    file: cap_std::fs::File,
-
-    // Where in the file are we?
-    position: u64,
-
-    // Reading or writing?
-    reading: bool,
-}
-
-#[async_trait::async_trait]
-impl WasiStream for FileStream {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-    #[cfg(unix)]
-    fn pollable_read(&self) -> Option<rustix::fd::BorrowedFd> {
-        if self.reading {
-            Some(self.file.as_fd())
+    async fn readable(&self) -> Result<(), Error> {
+        if is_read_write(&self.0)?.0 {
+            Ok(())
         } else {
-            None
-        }
-    }
-    #[cfg(unix)]
-    fn pollable_write(&self) -> Option<rustix::fd::BorrowedFd> {
-        if self.reading {
-            None
-        } else {
-            Some(self.file.as_fd())
+            Err(Error::badf())
         }
     }
 
-    #[cfg(windows)]
-    fn pollable_read(&self) -> Option<io_extras::os::windows::RawHandleOrSocket> {
-        if self.reading {
-            Some(self.file.as_raw_handle_or_socket())
+    async fn writable(&self) -> Result<(), Error> {
+        if is_read_write(&self.0)?.1 {
+            Ok(())
         } else {
-            None
+            Err(Error::badf())
         }
     }
-    #[cfg(windows)]
-    fn pollable_write(&self) -> Option<io_extras::os::windows::RawHandleOrSocket> {
-        if self.reading {
-            None
-        } else {
-            Some(self.file.as_raw_handle_or_socket())
-        }
-    }
-
-    async fn read(&mut self, buf: &mut [u8]) -> Result<u64, Error> {
-        use system_interface::fs::FileIoExt;
-        let n = FileIoExt::read_at(&mut &self.file, buf, self.position)?.try_into()?;
-        self.position += n;
-        Ok(n)
-    }
-    async fn write(&mut self, buf: &[u8]) -> Result<u64, Error> {
-        use system_interface::fs::FileIoExt;
-        let n = FileIoExt::write_at(&mut &self.file, buf, self.position)?.try_into()?;
-        self.position += n;
-        Ok(n)
-    }
-    // TODO: Optimize for file streams.
-    /*
-    async fn splice(
-        &mut self,
-        dst: &mut dyn WasiStream,
-        nelem: u64,
-    ) -> Result<u64, Error> {
-        todo!()
-    }
-    async fn skip(
-        &mut self,
-        nelem: u64,
-    ) -> Result<u64, Error> {
-        todo!()
-    }
-    async fn write_repeated(
-        &mut self,
-        byte: u8,
-        nelem: u64,
-    ) -> Result<u64, Error> {
-        todo!()
-    }
-    */
 }
 
 pub fn filetype_from(ft: &cap_std::fs::FileType) -> FileType {
@@ -331,6 +259,13 @@ pub fn get_fd_flags<Filelike: AsFilelike>(f: Filelike) -> io::Result<wasi_common
         out |= wasi_common::file::FdFlags::SYNC;
     }
     Ok(out)
+}
+
+/// Return the file-descriptor flags for a given file-like object.
+///
+/// This returns the flags needed to implement [`WasiFile::get_fdflags`].
+pub fn is_read_write<Filelike: AsFilelike>(f: Filelike) -> io::Result<(bool, bool)> {
+    f.is_read_write()
 }
 
 fn convert_advice(advice: Advice) -> system_interface::fs::Advice {

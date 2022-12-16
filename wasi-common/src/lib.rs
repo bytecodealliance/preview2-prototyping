@@ -52,10 +52,12 @@
 //! `wasi_cap_std_sync::WasiCtxBuilder::new()` function uses this public
 //! interface to plug in its own implementations of each of these resources.
 pub mod clocks;
+pub mod connection;
 mod ctx;
 pub mod dir;
 mod error;
 pub mod file;
+pub mod listener;
 pub mod pipe;
 pub mod random;
 pub mod sched;
@@ -64,10 +66,12 @@ pub mod table;
 
 pub use cap_rand::RngCore;
 pub use clocks::{SystemTimeSpec, WasiClocks, WasiMonotonicClock, WasiSystemClock};
+pub use connection::WasiConnection;
 pub use ctx::WasiCtx;
 pub use dir::WasiDir;
 pub use error::{Errno, Error, ErrorExt, I32Exit};
 pub use file::WasiFile;
+pub use listener::WasiListener;
 pub use sched::{Poll, WasiSched};
 pub use stream::WasiStream;
 pub use table::Table;

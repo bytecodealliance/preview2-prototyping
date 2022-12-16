@@ -29,8 +29,27 @@ pub trait WasiStream: Send + Sync {
         Err(Error::badf())
     }
 
+    async fn read_vectored<'a>(
+        &mut self,
+        _bufs: &mut [std::io::IoSliceMut<'a>],
+    ) -> Result<u64, Error> {
+        Err(Error::badf())
+    }
+
+    fn is_read_vectored(&self) -> bool {
+        false
+    }
+
     async fn write(&mut self, _buf: &[u8]) -> Result<u64, Error> {
         Err(Error::badf())
+    }
+
+    async fn write_vectored<'a>(&mut self, _bufs: &[std::io::IoSlice<'a>]) -> Result<u64, Error> {
+        Err(Error::badf())
+    }
+
+    fn is_write_vectored(&self) -> bool {
+        false
     }
 
     async fn splice(&mut self, dst: &mut dyn WasiStream, nelem: u64) -> Result<u64, Error> {
@@ -79,6 +98,14 @@ pub trait WasiStream: Send + Sync {
 
         Ok(nwritten)
     }
+
+    async fn num_ready_bytes(&self) -> Result<u64, Error> {
+        Ok(0)
+    }
+
+    async fn readable(&self) -> Result<(), Error>;
+
+    async fn writable(&self) -> Result<(), Error>;
 }
 
 pub trait TableStreamExt {

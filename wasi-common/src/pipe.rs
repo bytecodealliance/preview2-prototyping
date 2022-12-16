@@ -7,9 +7,8 @@
 //! Some convenience constructors are included for common backing types like `Vec<u8>` and `String`,
 //! but the virtual pipes can be instantiated with any `Read` or `Write` type.
 //!
-use crate::file::{FdFlags, FileType, WasiFile};
 use crate::stream::WasiStream;
-use crate::Error;
+use crate::{Error, ErrorExt};
 use std::any::Any;
 use std::convert::TryInto;
 use std::io::{self, Read, Write};
@@ -100,28 +99,6 @@ impl From<&str> for ReadPipe<io::Cursor<String>> {
 }
 
 #[async_trait::async_trait]
-impl<R: Read + Any + Send + Sync> WasiFile for ReadPipe<R> {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-    async fn get_filetype(&mut self) -> Result<FileType, Error> {
-        Ok(FileType::Pipe)
-    }
-    async fn read_vectored<'a>(&mut self, bufs: &mut [io::IoSliceMut<'a>]) -> Result<u64, Error> {
-        let n = self.borrow().read_vectored(bufs)?;
-        Ok(n.try_into()?)
-    }
-    async fn read_vectored_at<'a>(
-        &mut self,
-        bufs: &mut [io::IoSliceMut<'a>],
-        _offset: u64,
-    ) -> Result<u64, Error> {
-        let n = self.borrow().read_vectored(bufs)?;
-        Ok(n.try_into()?)
-    }
-}
-
-#[async_trait::async_trait]
 impl<R: Read + Any + Send + Sync> WasiStream for ReadPipe<R> {
     fn as_any(&self) -> &dyn Any {
         self
@@ -157,6 +134,14 @@ impl<R: Read + Any + Send + Sync> WasiStream for ReadPipe<R> {
         todo!()
     }
     */
+
+    async fn readable(&self) -> Result<(), Error> {
+        Ok(())
+    }
+
+    async fn writable(&self) -> Result<(), Error> {
+        Err(Error::badf())
+    }
 }
 
 /// A virtual pipe write end.
@@ -230,23 +215,6 @@ impl WritePipe<io::Cursor<Vec<u8>>> {
 }
 
 #[async_trait::async_trait]
-impl<W: Write + Any + Send + Sync> WasiFile for WritePipe<W> {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-    async fn get_filetype(&mut self) -> Result<FileType, Error> {
-        Ok(FileType::Pipe)
-    }
-    async fn get_fdflags(&mut self) -> Result<FdFlags, Error> {
-        Ok(FdFlags::APPEND)
-    }
-    async fn write_vectored<'a>(&mut self, bufs: &[io::IoSlice<'a>]) -> Result<u64, Error> {
-        let n = self.borrow().write_vectored(bufs)?;
-        Ok(n.try_into()?)
-    }
-}
-
-#[async_trait::async_trait]
 impl<W: Write + Any + Send + Sync> WasiStream for WritePipe<W> {
     fn as_any(&self) -> &dyn Any {
         self
@@ -282,4 +250,12 @@ impl<W: Write + Any + Send + Sync> WasiStream for WritePipe<W> {
         todo!()
     }
     */
+
+    async fn readable(&self) -> Result<(), Error> {
+        Err(Error::badf())
+    }
+
+    async fn writable(&self) -> Result<(), Error> {
+        Ok(())
+    }
 }

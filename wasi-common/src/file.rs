@@ -1,6 +1,7 @@
-use crate::{Error, ErrorExt, SystemTimeSpec};
+use crate::{Error, ErrorExt, SystemTimeSpec, WasiStream};
 use bitflags::bitflags;
 use std::any::Any;
+use std::io;
 
 #[async_trait::async_trait]
 pub trait WasiFile: Send + Sync {
@@ -21,27 +22,7 @@ pub trait WasiFile: Send + Sync {
         false
     }
 
-    async fn sock_accept(&mut self, _fdflags: FdFlags) -> Result<Box<dyn WasiFile>, Error> {
-        Err(Error::badf())
-    }
-
-    async fn sock_recv<'a>(
-        &mut self,
-        _ri_data: &mut [std::io::IoSliceMut<'a>],
-        _ri_flags: RiFlags,
-    ) -> Result<(u64, RoFlags), Error> {
-        Err(Error::badf())
-    }
-
-    async fn sock_send<'a>(
-        &mut self,
-        _si_data: &[std::io::IoSlice<'a>],
-        _si_flags: SiFlags,
-    ) -> Result<u64, Error> {
-        Err(Error::badf())
-    }
-
-    async fn sock_shutdown(&mut self, _how: SdFlags) -> Result<(), Error> {
+    async fn try_clone(&mut self) -> Result<Box<dyn WasiFile>, Error> {
         Err(Error::badf())
     }
 
@@ -94,10 +75,7 @@ pub trait WasiFile: Send + Sync {
         Err(Error::badf())
     }
 
-    async fn read_vectored<'a>(
-        &mut self,
-        _bufs: &mut [std::io::IoSliceMut<'a>],
-    ) -> Result<u64, Error> {
+    async fn read_at<'a>(&mut self, _buf: &mut [u8], _offset: u64) -> Result<u64, Error> {
         Err(Error::badf())
     }
 
@@ -109,7 +87,11 @@ pub trait WasiFile: Send + Sync {
         Err(Error::badf())
     }
 
-    async fn write_vectored<'a>(&mut self, _bufs: &[std::io::IoSlice<'a>]) -> Result<u64, Error> {
+    fn is_read_vectored_at(&self) -> bool {
+        false
+    }
+
+    async fn write_at<'a>(&mut self, _bufs: &[u8], _offset: u64) -> Result<u64, Error> {
         Err(Error::badf())
     }
 
@@ -121,25 +103,13 @@ pub trait WasiFile: Send + Sync {
         Err(Error::badf())
     }
 
-    async fn seek(&mut self, _pos: std::io::SeekFrom) -> Result<u64, Error> {
-        Err(Error::badf())
+    fn is_write_vectored_at(&self) -> bool {
+        false
     }
 
-    async fn peek(&mut self, _buf: &mut [u8]) -> Result<u64, Error> {
-        Err(Error::badf())
-    }
+    async fn readable(&self) -> Result<(), Error>;
 
-    async fn num_ready_bytes(&self) -> Result<u64, Error> {
-        Ok(0)
-    }
-
-    async fn readable(&self) -> Result<(), Error> {
-        Err(Error::badf())
-    }
-
-    async fn writable(&self) -> Result<(), Error> {
-        Err(Error::badf())
-    }
+    async fn writable(&self) -> Result<(), Error>;
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -162,31 +132,6 @@ bitflags! {
         const NONBLOCK = 0b100;
         const RSYNC    = 0b1000;
         const SYNC     = 0b10000;
-    }
-}
-
-bitflags! {
-    pub struct SdFlags: u32 {
-        const RD = 0b1;
-        const WR = 0b10;
-    }
-}
-
-bitflags! {
-    pub struct SiFlags: u32 {
-    }
-}
-
-bitflags! {
-    pub struct RiFlags: u32 {
-        const RECV_PEEK    = 0b1;
-        const RECV_WAITALL = 0b10;
-    }
-}
-
-bitflags! {
-    pub struct RoFlags: u32 {
-        const RECV_DATA_TRUNCATED = 0b1;
     }
 }
 
@@ -238,4 +183,159 @@ pub enum Advice {
     WillNeed,
     DontNeed,
     NoReuse,
+}
+
+pub struct FileStream {
+    // Which file are we streaming?
+    file: Box<dyn WasiFile>,
+
+    // Where in the file are we?
+    position: u64,
+
+    // Reading or writing?
+    reading: bool,
+}
+
+impl FileStream {
+    pub fn new_reader(file: Box<dyn WasiFile>, position: u64) -> Self {
+        Self {
+            file,
+            position,
+            reading: true,
+        }
+    }
+
+    pub fn new_writer(file: Box<dyn WasiFile>, position: u64) -> Self {
+        Self {
+            file,
+            position,
+            reading: false,
+        }
+    }
+
+    pub fn new_appender(_file: Box<dyn WasiFile>) -> Self {
+        todo!()
+    }
+
+    pub async fn seek(&mut self, pos: std::io::SeekFrom) -> Result<u64, Error> {
+        match pos {
+            std::io::SeekFrom::Start(pos) => self.position = pos,
+            std::io::SeekFrom::Current(pos) => {
+                self.position = self.position.wrapping_add(pos as i64 as u64)
+            }
+            std::io::SeekFrom::End(pos) => {
+                self.position = self
+                    .file
+                    .get_filestat()
+                    .await?
+                    .size
+                    .wrapping_add(pos as i64 as u64)
+            }
+        }
+        Ok(self.position)
+    }
+}
+
+#[async_trait::async_trait]
+impl WasiStream for FileStream {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    #[cfg(unix)]
+    fn pollable_read(&self) -> Option<rustix::fd::BorrowedFd> {
+        if self.reading {
+            self.file.pollable()
+        } else {
+            None
+        }
+    }
+    #[cfg(unix)]
+    fn pollable_write(&self) -> Option<rustix::fd::BorrowedFd> {
+        if self.reading {
+            None
+        } else {
+            self.file.pollable()
+        }
+    }
+
+    #[cfg(windows)]
+    fn pollable_read(&self) -> Option<io_extras::os::windows::RawHandleOrSocket> {
+        if self.reading {
+            self.file.pollable()
+        } else {
+            None
+        }
+    }
+    #[cfg(windows)]
+    fn pollable_write(&self) -> Option<io_extras::os::windows::RawHandleOrSocket> {
+        if self.reading {
+            None
+        } else {
+            self.file.pollable()
+        }
+    }
+
+    async fn read(&mut self, buf: &mut [u8]) -> Result<u64, Error> {
+        let n = self.file.read_at(buf, self.position).await? as i64 as u64;
+        self.position = self.position.wrapping_add(n);
+        Ok(n)
+    }
+    async fn read_vectored<'a>(&mut self, bufs: &mut [io::IoSliceMut<'a>]) -> Result<u64, Error> {
+        let n = self.file.read_vectored_at(bufs, self.position).await? as i64 as u64;
+        self.position = self.position.wrapping_add(n);
+        Ok(n)
+    }
+    #[cfg(can_vector)]
+    fn is_read_vectored_at(&self) -> bool {
+        self.file.is_read_vectored_at()
+    }
+    async fn write(&mut self, buf: &[u8]) -> Result<u64, Error> {
+        let n = self.file.write_at(buf, self.position).await? as i64 as u64;
+        self.position = self.position.wrapping_add(n);
+        Ok(n)
+    }
+    async fn write_vectored<'a>(&mut self, bufs: &[io::IoSlice<'a>]) -> Result<u64, Error> {
+        let n = self.file.write_vectored_at(bufs, self.position).await? as i64 as u64;
+        self.position = self.position.wrapping_add(n);
+        Ok(n)
+    }
+    #[cfg(can_vector)]
+    fn is_write_vectored_at(&self) -> bool {
+        self.file.is_write_vectored_at()
+    }
+    // TODO: Optimize for file streams.
+    /*
+    async fn splice(
+        &mut self,
+        dst: &mut dyn WasiStream,
+        nelem: u64,
+    ) -> Result<u64, Error> {
+        todo!()
+    }
+    async fn skip(
+        &mut self,
+        nelem: u64,
+    ) -> Result<u64, Error> {
+        todo!()
+    }
+    async fn write_repeated(
+        &mut self,
+        byte: u8,
+        nelem: u64,
+    ) -> Result<u64, Error> {
+        todo!()
+    }
+    */
+
+    async fn num_ready_bytes(&self) -> Result<u64, Error> {
+        Ok(0)
+    }
+
+    async fn readable(&self) -> Result<(), Error> {
+        self.file.readable().await
+    }
+
+    async fn writable(&self) -> Result<(), Error> {
+        self.file.writable().await
+    }
 }

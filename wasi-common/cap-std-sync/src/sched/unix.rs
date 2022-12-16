@@ -13,16 +13,16 @@ pub async fn poll_oneoff<'a>(poll: &mut Poll<'a>) -> Result<(), Error> {
         match s {
             Subscription::Read(f) => {
                 let fd = f
-                    .file
-                    .pollable()
+                    .stream
+                    .pollable_read()
                     .ok_or(Error::invalid_argument().context("file is not pollable"))?;
                 pollfds.push(PollFd::from_borrowed_fd(fd, PollFlags::IN));
             }
 
             Subscription::Write(f) => {
                 let fd = f
-                    .file
-                    .pollable()
+                    .stream
+                    .pollable_write()
                     .ok_or(Error::invalid_argument().context("file is not pollable"))?;
                 pollfds.push(PollFd::from_borrowed_fd(fd, PollFlags::OUT));
             }
@@ -55,7 +55,7 @@ pub async fn poll_oneoff<'a>(poll: &mut Poll<'a>) -> Result<(), Error> {
             let revents = pollfd.revents();
             let (nbytes, rwsub) = match rwsub {
                 Subscription::Read(sub) => {
-                    let ready = sub.file.num_ready_bytes().await?;
+                    let ready = sub.stream.num_ready_bytes().await?;
                     (std::cmp::max(ready, 1), sub)
                 }
                 Subscription::Write(sub) => (0, sub),

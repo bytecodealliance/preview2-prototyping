@@ -7,7 +7,7 @@ use std::{
     ops::BitAnd,
     time::SystemTime,
 };
-use wasi_common::{dir::TableDirExt, file::TableFileExt, WasiDir, WasiFile};
+use wasi_common::{dir::TableDirExt, file::{FileStream, TableFileExt}, WasiDir, WasiFile};
 
 fn contains<T: BitAnd<Output = T> + Eq + Copy>(flags: T, flag: T) -> bool {
     (flags & flag) == flag
@@ -532,7 +532,18 @@ impl wasi_filesystem::WasiFilesystem for WasiCtx {
         fd: wasi_filesystem::Descriptor,
         offset: u64,
     ) -> HostResult<WasiStream, wasi_filesystem::Errno> {
-        todo!()
+        let f = self.table().get_file_mut(u32::from(fd)).map_err(convert)?;
+
+        // Duplicate the file descriptor so that we get an indepenent lifetime.
+        let clone = f.try_clone().await.map_err(convert)?;
+
+        // Create a stream view for it.
+        let reader = FileStream::new_reader(clone, offset);
+
+        // Insert the stream view into the table.
+        let index = self.table().push(Box::new(reader)).map_err(convert)?;
+
+        Ok(index)
     }
 
     async fn write_via_stream(
@@ -540,13 +551,35 @@ impl wasi_filesystem::WasiFilesystem for WasiCtx {
         fd: wasi_filesystem::Descriptor,
         offset: u64,
     ) -> HostResult<WasiStream, wasi_filesystem::Errno> {
-        todo!()
+        let f = self.table().get_file_mut(u32::from(fd)).map_err(convert)?;
+
+        // Duplicate the file descriptor so that we get an indepenent lifetime.
+        let clone = f.try_clone().await.map_err(convert)?;
+
+        // Create a stream view for it.
+        let writer = FileStream::new_writer(clone, offset);
+
+        // Insert the stream view into the table.
+        let index = self.table().push(Box::new(writer)).map_err(convert)?;
+
+        Ok(index)
     }
 
     async fn append_via_stream(
         &mut self,
         fd: wasi_filesystem::Descriptor,
     ) -> HostResult<WasiStream, wasi_filesystem::Errno> {
-        todo!()
+        let f = self.table().get_file_mut(u32::from(fd)).map_err(convert)?;
+
+        // Duplicate the file descriptor so that we get an indepenent lifetime.
+        let clone = f.try_clone().await.map_err(convert)?;
+
+        // Create a stream view for it.
+        let appender = FileStream::new_appender(clone);
+
+        // Insert the stream view into the table.
+        let index = self.table().push(Box::new(appender)).map_err(convert)?;
+
+        Ok(index)
     }
 }

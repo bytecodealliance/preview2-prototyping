@@ -1,6 +1,7 @@
 use crate::clocks::WasiClocks;
 use crate::dir::WasiDir;
 use crate::file::WasiFile;
+use crate::listener::WasiListener;
 use crate::sched::WasiSched;
 use crate::stream::WasiStream;
 use crate::table::Table;
@@ -39,6 +40,10 @@ impl WasiCtx {
 
     pub fn insert_stream(&mut self, fd: u32, stream: Box<dyn WasiStream>) {
         self.table().insert_at(fd, Box::new(stream));
+    }
+
+    pub fn insert_listener(&mut self, fd: u32, listener: Box<dyn WasiListener>) {
+        self.table().insert_at(fd, Box::new(listener));
     }
 
     pub fn push_file(&mut self, file: Box<dyn WasiFile>) -> Result<u32, Error> {
