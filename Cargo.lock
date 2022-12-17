@@ -1168,6 +1168,7 @@ dependencies = [
 name = "test-programs"
 version = "0.0.0"
 dependencies = [
+ "getrandom",
  "wasi",
  "wit-bindgen-guest-rust",
 ]
