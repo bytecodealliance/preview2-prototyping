@@ -1,5 +1,3 @@
-#![allow(unused_variables)]
-
 use crate::{wasi_stderr, WasiCtx};
 use is_terminal::IsTerminal;
 #[cfg(unix)]
@@ -23,7 +21,7 @@ impl wasi_stderr::WasiStderr for WasiCtx {
         {
             Ok(
                 terminal_size::terminal_size_using_fd(std::io::stderr().as_raw_fd())
-                    .map(|(width, height)| width.0),
+                    .map(|(width, _height)| width.0),
             )
         }
 
@@ -31,7 +29,7 @@ impl wasi_stderr::WasiStderr for WasiCtx {
         {
             Ok(
                 terminal_size::terminal_size_using_handle(std::io::stderr().as_raw_handle())
-                    .map(|(width, height)| width.0),
+                    .map(|(width, _height)| width.0),
             )
         }
     }

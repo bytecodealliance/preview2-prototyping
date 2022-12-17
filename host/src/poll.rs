@@ -1,5 +1,3 @@
-#![allow(unused_variables)]
-
 use crate::{
     wasi_poll::{self, Size, StreamError, WasiFuture, WasiPoll, WasiStream},
     HostResult, WasiCtx,
@@ -7,7 +5,7 @@ use crate::{
 use wasi_common::stream::TableStreamExt;
 
 fn convert(error: wasi_common::Error) -> wasmtime::component::Error<StreamError> {
-    if let Some(errno) = error.downcast_ref() {
+    if let Some(_errno) = error.downcast_ref() {
         wasmtime::component::Error::new(wasi_poll::StreamError {})
     } else {
         error.into().into()
@@ -86,6 +84,8 @@ impl WasiPoll for WasiCtx {
 
         let bytes_read: u64 = s.read(&mut buffer).await.map_err(convert)?;
 
+        buffer.shrink_to(bytes_read as usize);
+
         Ok(buffer)
     }
 
@@ -127,9 +127,9 @@ impl WasiPoll for WasiCtx {
 
     async fn splice_stream(
         &mut self,
-        src: WasiStream,
-        dst: WasiStream,
-        len: u64,
+        _src: WasiStream,
+        _dst: WasiStream,
+        _len: u64,
     ) -> HostResult<u64, StreamError> {
         // TODO: We can't get two streams at the same time because they both
         // carry the exclusive lifetime of `self`. When [`get_many_mut`] is
