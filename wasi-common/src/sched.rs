@@ -64,11 +64,10 @@ impl<'a> Poll<'a> {
         self.subs
             .push((Subscription::Write(RwSubscription::new(stream)), ud));
     }
-    pub fn results(self) -> Vec<(SubscriptionResult, Userdata)> {
+    pub fn results(self) -> impl Iterator<Item = (SubscriptionResult, Userdata)> + 'a {
         self.subs
             .into_iter()
             .filter_map(|(s, ud)| SubscriptionResult::from_subscription(s).map(|r| (r, ud)))
-            .collect()
     }
     pub fn is_empty(&self) -> bool {
         self.subs.is_empty()

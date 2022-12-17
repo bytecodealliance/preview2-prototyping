@@ -63,4 +63,18 @@ impl WallClock {
     pub fn now(&self, clock: &dyn WasiSystemClock) -> SystemTime {
         clock.now(clock.resolution())
     }
+    pub fn new_timer(&self, initial: SystemTime) -> WallTimer {
+        WallTimer { initial }
+    }
+}
+
+pub struct WallTimer {
+    initial: SystemTime,
+}
+
+impl WallTimer {
+    pub fn current(&self) -> SystemTime {
+        // FIXME totally bogus implementation
+        self.initial
+    }
 }

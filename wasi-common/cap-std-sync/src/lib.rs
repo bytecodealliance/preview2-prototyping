@@ -92,7 +92,7 @@ impl WasiCtxBuilder {
         self
     }
     pub fn preopened_listener(mut self, fd: u32, listener: impl Into<Listener>) -> Self {
-        let listener: Listener = Listener.into();
+        let listener: Listener = listener.into();
         let listener: Box<dyn WasiListener> = listener.into();
 
         self.0.insert_listener(fd, listener);

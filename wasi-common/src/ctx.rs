@@ -35,30 +35,34 @@ impl WasiCtx {
     }
 
     pub fn insert_file(&mut self, fd: u32, file: Box<dyn WasiFile>) {
-        self.table().insert_at(fd, Box::new(file));
+        self.table_mut().insert_at(fd, Box::new(file));
     }
 
     pub fn insert_stream(&mut self, fd: u32, stream: Box<dyn WasiStream>) {
-        self.table().insert_at(fd, Box::new(stream));
+        self.table_mut().insert_at(fd, Box::new(stream));
     }
 
     pub fn insert_listener(&mut self, fd: u32, listener: Box<dyn WasiListener>) {
-        self.table().insert_at(fd, Box::new(listener));
+        self.table_mut().insert_at(fd, Box::new(listener));
     }
 
     pub fn push_file(&mut self, file: Box<dyn WasiFile>) -> Result<u32, Error> {
-        self.table().push(Box::new(file))
+        self.table_mut().push(Box::new(file))
     }
 
     pub fn insert_dir(&mut self, fd: u32, dir: Box<dyn WasiDir>) {
-        self.table().insert_at(fd, Box::new(dir))
+        self.table_mut().insert_at(fd, Box::new(dir))
     }
 
     pub fn push_dir(&mut self, dir: Box<dyn WasiDir>) -> Result<u32, Error> {
-        self.table().push(Box::new(dir))
+        self.table_mut().push(Box::new(dir))
     }
 
-    pub fn table(&mut self) -> &mut Table {
+    pub fn table(&self) -> &Table {
+        &self.table
+    }
+
+    pub fn table_mut(&mut self) -> &mut Table {
         &mut self.table
     }
 

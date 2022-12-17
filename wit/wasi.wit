@@ -46,6 +46,10 @@ interface wasi-clocks {
   /// on a monotonic clock.
   type monotonic-timer = u32
 
+  /// This is a timer that counts down from a given starting time down to zero
+  /// on a wall clock.
+  type wall-timer = u32
+
   /// A timestamp in nanoseconds.
   type instant = u64
 
@@ -70,14 +74,18 @@ interface wasi-clocks {
   ///
   /// As this the clock is monotonic, calling this function repeatedly will produce
   /// a sequence of non-decreasing values.
-  monotonic-clock-now: func(fd: monotonic-clock) -> instant
+  monotonic-clock-now: func(clock: monotonic-clock) -> instant
 
   /// Query the resolution of the clock.
-  monotonic-clock-resolution: func(fd: monotonic-clock) -> instant
+  monotonic-clock-resolution: func(clock: monotonic-clock) -> instant
 
   /// This creates a new `monotonic-timer` with the given starting time. It will
   /// count down from this time until it reaches zero.
-  monotonic-clock-new-timer: func(fd: monotonic-clock, initial: instant) -> monotonic-timer
+  monotonic-clock-new-timer: func(clock: monotonic-clock, initial: instant) -> monotonic-timer
+
+  /// This creates a new `wall-timer` with the given starting time. It will
+  /// count down from this time until it reaches zero.
+  wall-clock-new-timer: func(clock: wall-clock, initial: datetime) -> wall-timer
 
   /// Read the current value of the clock.
   ///
@@ -92,15 +100,24 @@ interface wasi-clocks {
   ///
   /// [POSIX's Seconds Since the Epoch]: https://pubs.opengroup.org/onlinepubs/9699919799/xrat/V4_xbd_chap04.html#tag_21_04_16
   /// [Unix Time]: https://en.wikipedia.org/wiki/Unix_time
-  wall-clock-now: func(fd: wall-clock) -> datetime
+  wall-clock-now: func(clock: wall-clock) -> datetime
 
   /// Query the resolution of the clock.
   ///
   /// The nanoseconds field of the output is always less than 1000000000.
-  wall-clock-resolution: func(fd: wall-clock) -> datetime
+  wall-clock-resolution: func(timer: wall-clock) -> datetime
 
   /// Returns the amount of time left before this timer reaches zero.
-  monotonic-timer-current: func(fd: monotonic-timer) -> instant
+  monotonic-timer-current: func(timer: monotonic-timer) -> instant
+
+  /// Returns the amount of time left before this timer reaches zero.
+  wall-timer-current: func(timer: wall-timer) -> datetime
+
+  /// Dispose of the specified timer, after which it may no longer be used.
+  drop-monotonic-timer: func(timer: monotonic-timer)
+
+  /// Dispose of the specified timer, after which it may no longer be used.
+  drop-wall-timer: func(timer: wall-timer)
 }
 
 /// # WASI Default Clocks API
@@ -1008,6 +1025,9 @@ interface wasi-poll {
   ///
   /// In the shorter term, it is a `u32` which will be replaced by a handle
   /// when the component-model handles and resource features are ready.
+  ///
+  /// Pseudo-future lifetimes are not automatically managed. Users must
+  /// ensure that they do not outlive the resource they reference.
   type wasi-future = u32
 
   /// A "pseudo-stream".

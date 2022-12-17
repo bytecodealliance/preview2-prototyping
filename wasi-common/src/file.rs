@@ -6,7 +6,7 @@ use std::io;
 #[async_trait::async_trait]
 pub trait WasiFile: Send + Sync {
     fn as_any(&self) -> &dyn Any;
-    async fn get_filetype(&mut self) -> Result<FileType, Error>;
+    async fn get_filetype(&self) -> Result<FileType, Error>;
 
     #[cfg(unix)]
     fn pollable(&self) -> Option<rustix::fd::BorrowedFd> {
@@ -34,7 +34,7 @@ pub trait WasiFile: Send + Sync {
         Ok(())
     }
 
-    async fn get_fdflags(&mut self) -> Result<FdFlags, Error> {
+    async fn get_fdflags(&self) -> Result<FdFlags, Error> {
         Ok(FdFlags::empty())
     }
 
@@ -42,7 +42,7 @@ pub trait WasiFile: Send + Sync {
         Err(Error::badf())
     }
 
-    async fn get_filestat(&mut self) -> Result<Filestat, Error> {
+    async fn get_filestat(&self) -> Result<Filestat, Error> {
         Ok(Filestat {
             device_id: 0,
             inode: 0,

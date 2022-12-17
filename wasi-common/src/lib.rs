@@ -65,7 +65,9 @@ pub mod stream;
 pub mod table;
 
 pub use cap_rand::RngCore;
-pub use clocks::{SystemTimeSpec, WasiClocks, WasiMonotonicClock, WasiSystemClock};
+pub use clocks::{
+    MonotonicTimer, SystemTimeSpec, WallTimer, WasiClocks, WasiMonotonicClock, WasiSystemClock,
+};
 pub use connection::WasiConnection;
 pub use ctx::WasiCtx;
 pub use dir::WasiDir;

@@ -48,11 +48,11 @@ impl WasiFile for File {
         self.0.sync_all()?;
         Ok(())
     }
-    async fn get_filetype(&mut self) -> Result<FileType, Error> {
+    async fn get_filetype(&self) -> Result<FileType, Error> {
         let meta = self.0.metadata()?;
         Ok(filetype_from(&meta.file_type()))
     }
-    async fn get_fdflags(&mut self) -> Result<FdFlags, Error> {
+    async fn get_fdflags(&self) -> Result<FdFlags, Error> {
         let fdflags = get_fd_flags(&self.0)?;
         Ok(fdflags)
     }
@@ -68,7 +68,7 @@ impl WasiFile for File {
         self.0.set_fd_flags(set_fd_flags)?;
         Ok(())
     }
-    async fn get_filestat(&mut self) -> Result<Filestat, Error> {
+    async fn get_filestat(&self) -> Result<Filestat, Error> {
         let meta = self.0.metadata()?;
         Ok(Filestat {
             device_id: meta.dev(),
