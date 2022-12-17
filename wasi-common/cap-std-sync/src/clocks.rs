@@ -48,7 +48,7 @@ pub fn clocks_ctx(table: &mut Table) -> WasiClocks {
         )))
         .unwrap();
 
-    let default_wall = table.push(Box::new(WallClock::default())).unwrap();
+    let default_wall = table.push(Box::<WallClock>::default()).unwrap();
 
     WasiClocks {
         system,
