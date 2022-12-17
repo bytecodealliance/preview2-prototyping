@@ -276,31 +276,49 @@ impl WasiStream for FileStream {
     }
 
     async fn read(&mut self, buf: &mut [u8]) -> Result<u64, Error> {
+        if !self.reading {
+            return Err(Error::badf());
+        }
         let n = self.file.read_at(buf, self.position).await? as i64 as u64;
         self.position = self.position.wrapping_add(n);
         Ok(n)
     }
     async fn read_vectored<'a>(&mut self, bufs: &mut [io::IoSliceMut<'a>]) -> Result<u64, Error> {
+        if !self.reading {
+            return Err(Error::badf());
+        }
         let n = self.file.read_vectored_at(bufs, self.position).await? as i64 as u64;
         self.position = self.position.wrapping_add(n);
         Ok(n)
     }
     #[cfg(can_vector)]
     fn is_read_vectored_at(&self) -> bool {
+        if !self.reading {
+            return false;
+        }
         self.file.is_read_vectored_at()
     }
     async fn write(&mut self, buf: &[u8]) -> Result<u64, Error> {
+        if self.reading {
+            return Err(Error::badf());
+        }
         let n = self.file.write_at(buf, self.position).await? as i64 as u64;
         self.position = self.position.wrapping_add(n);
         Ok(n)
     }
     async fn write_vectored<'a>(&mut self, bufs: &[io::IoSlice<'a>]) -> Result<u64, Error> {
+        if self.reading {
+            return Err(Error::badf());
+        }
         let n = self.file.write_vectored_at(bufs, self.position).await? as i64 as u64;
         self.position = self.position.wrapping_add(n);
         Ok(n)
     }
     #[cfg(can_vector)]
     fn is_write_vectored_at(&self) -> bool {
+        if self.reading {
+            return false;
+        }
         self.file.is_write_vectored_at()
     }
 
@@ -316,6 +334,9 @@ impl WasiStream for FileStream {
     */
 
     async fn skip(&mut self, nelem: u64) -> Result<u64, Error> {
+        if !self.reading {
+            return Err(Error::badf());
+        }
         self.position = self
             .position
             .checked_add(nelem)
@@ -335,14 +356,23 @@ impl WasiStream for FileStream {
     */
 
     async fn num_ready_bytes(&self) -> Result<u64, Error> {
+        if !self.reading {
+            return Err(Error::badf());
+        }
         Ok(0)
     }
 
     async fn readable(&self) -> Result<(), Error> {
+        if !self.reading {
+            return Err(Error::badf());
+        }
         self.file.readable().await
     }
 
     async fn writable(&self) -> Result<(), Error> {
+        if self.reading {
+            return Err(Error::badf());
+        }
         self.file.writable().await
     }
 }
