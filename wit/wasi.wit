@@ -386,52 +386,26 @@ interface wasi-filesystem {
   /// API; some are used in higher-level library layers, and others are provided
   /// merely for alignment with POSIX.
   enum errno {
-      /// Argument list too long. This is similar to `E2BIG` in POSIX.
-      toobig,
       /// Permission denied.
       access,
-      /// Address in use.
-      addrinuse,
-      /// Address not available.
-      addrnotavail,
-      /// Address family not supported.
-      afnosupport,
       /// Resource unavailable, or operation would block.
       again,
       /// Connection already in progress.
       already,
-      /// Bad message.
-      badmsg,
       /// Bad descriptor.
       badf,
       /// Device or resource busy.
       busy,
-      /// Operation canceled.
-      canceled,
       /// No child processes.
       child,
-      /// Connection aborted.
-      connaborted,
-      /// Connection refused.
-      connrefused,
-      /// Connection reset.
-      connreset,
       /// Resource deadlock would occur.
       deadlk,
-      /// Destination address required.
-      destaddrreq,
       /// Storage quota exceeded.
       dquot,
       /// File exists.
       exist,
-      /// Bad address.
-      fault,
       /// File too large.
       fbig,
-      /// Host is unreachable.
-      hostunreach,
-      /// Identifier removed.
-      idrm,
       /// Illegal byte sequence.
       ilseq,
       /// Operation in progress.
@@ -442,48 +416,24 @@ interface wasi-filesystem {
       inval,
       /// I/O error.
       io,
-      /// Socket is connected.
-      isconn,
       /// Is a directory.
       isdir,
       /// Too many levels of symbolic links.
       loop,
-      /// File descriptor value too large.
-      mfile,
       /// Too many links.
       mlink,
       /// Message too large.
       msgsize,
-      /// Multihop attempted.
-      multihop,
       /// Filename too long.
       nametoolong,
-      /// Network is down.
-      netdown,
-      /// Connection aborted by network.
-      netreset,
-      /// Network unreachable.
-      netunreach,
-      /// Too many files open in system.
-      nfile,
-      /// No buffer space available.
-      nobufs,
       /// No such device.
       nodev,
       /// No such file or directory.
       noent,
-      /// Executable file format error.
-      noexec,
       /// No locks available.
       nolck,
-      /// Link has been severed.
-      nolink,
       /// Not enough space.
       nomem,
-      /// No message of the desired type.
-      nomsg,
-      /// Protocol not available.
-      noprotoopt,
       /// No space left on device.
       nospc,
       /// Function not supported.
@@ -502,24 +452,14 @@ interface wasi-filesystem {
       nxio,
       /// Value too large to be stored in data type.
       overflow,
-      /// Previous owner died.
-      ownerdead,
       /// Operation not permitted.
       perm,
       /// Broken pipe.
       pipe,
-      /// Result too large.
-      range,
       /// Read-only file system.
       rofs,
       /// Invalid seek.
       spipe,
-      /// No such process.
-      srch,
-      /// Stale file handle.
-      stale,
-      /// Connection timed out.
-      timedout,
       /// Text file busy.
       txtbsy,
       /// Cross-device link.
@@ -1121,42 +1061,419 @@ interface wasi-poll {
   poll-oneoff: func(in: list<wasi-future>) -> list<u8>
 }
 
+/// This interface defines an opaque descriptor type that represents a particular network. This enables context-based security for networking.
+interface wasi-net {
+  /// A network, possibly virtual.
+  type network = u32
+}
+
+/// This interface defines IP-address-related data structures. Note that I chose to represent addresses as fixed tuples rather than other representations. This avoids allocations and makes it trivial to convert the addresses to strings.
+interface wasi-ip {
+  type ipv4-address = tuple<u8, u8, u8, u8>
+  type ipv6-address = tuple<u16, u16, u16, u16, u16, u16, u16, u16>
+
+  enum ip-address-family {
+      /// Similar to `AF_INET` in POSIX.
+      ipv4,
+
+      /// Similar to `AF_INET6` in POSIX.
+      ipv6,
+  }
+
+  variant ip-address {
+      ipv4(ipv4-address),
+      ipv6(ipv6-address),
+  }
+
+  record ipv4-socket-address {
+      address: ipv4-address,
+      port: u16,
+  }
+
+  record ipv6-socket-address {
+      address: ipv6-address,
+      port: u16,
+      flow-info: u32,
+      scope-id: u32,
+  }
+
+  variant ip-socket-address {
+      ipv4(ipv4-socket-address),
+      ipv6(ipv6-socket-address),
+  }
+}
+
+/// This interface allows callers to perform DNS resolution. Since the existing definition in wasi-sockets uses currently unsupported wit features, I have rewritten this interface to be usable on existing features.
+///
+/// First, you call resolve-name() to create a resolver descriptor. Then, you call resolve-next(resolver) in a loop to fetch the IP addresses. Finally, you destroy the resolver with close() (like for all descriptors). This structure allows for non-blocking operation in conjunction with poll-oneoff().
+interface wasi-dns {
+  // TODO: use { ip-address-family, ip-address } from wasi-ip
+  enum ip-address-family {
+      /// Similar to `AF_INET` in POSIX.
+      ipv4,
+
+      /// Similar to `AF_INET6` in POSIX.
+      ipv6,
+  }
+  type ipv4-address = tuple<u8, u8, u8, u8>
+  type ipv6-address = tuple<u16, u16, u16, u16, u16, u16, u16, u16>
+  variant ip-address {
+      ipv4(ipv4-address),
+      ipv6(ipv6-address),
+  }
+
+  /// Resolution flags.
+  flags resolver-flags {
+      /// Equivalent to `O_NONBLOCK`.
+      nonblock,
+  }
+
+  /// An iterator over resolution results.
+  ///
+  /// In the future, this will be replaced by handle types.
+  type resolver = u32
+
+  // TODO: use { network } from wasi-net
+  type network = u32
+
+  enum resolve-name-error {
+      invalid-name,
+  }
+
+  enum resolve-error {
+      /// The resolve is in non-blocking mode and the request would block.
+      would-block,
+      /// The DNS resolver is unable to provide results.
+      dns-unavailable,
+  }
+
+  /// Starts resolving an internet host name to a list of IP addresses.
+  ///
+  /// This function returns a new resolver on success or an error if
+  /// immediately available. For example, this function fails with
+  /// `invalid-name` when `name` is:
+  ///   - empty
+  ///   - an IP address
+  ///   - a syntactically invalid domain name in another way
+  resolve-name: func(
+      network: network,
+
+      /// The name to look up.
+      ///
+      /// IP addresses are not allowed and will fail with `invalid-name`.
+      ///
+      /// Unicode domain names are automatically converted to ASCII using
+      /// IDNA encoding.
+      name: string,
+
+      /// If provided, limit the results the specified address family.
+      address-family: option<ip-address-family>,
+
+      /// Flags controlling the behavior of the name resolution.
+      %flags: resolver-flags
+  ) -> result<resolver, resolve-name-error>
+
+  /// Get the next address from the resolver.
+  ///
+  /// This function should be called multiple times. On each call, it will
+  /// return the next address in connection order preference. If all
+  /// addresses have been exhausted, this function returns `none`. If
+  /// non-blocking mode is used, this function may return `errno::again`
+  /// indicating that the caller should poll for incoming data.
+  /// This function never returns IPv4-mapped IPv6 addresses.
+  resolve-next: func(resolver: resolver) -> result<option<ip-address>, resolve-error>
+
+  /// Closes a handle returned by `resolve-name`.
+  close-resolver: func(resolver: resolver)
+}
+
+/// This interface represents the core of TCP networking. There are two types of TCP descriptors:
+///
+///  - a listener, which produces new incoming connections; and ...
+///  - a connection, which actually transfers data to remote parties.
+///
+/// Note that this interface does not implement bind(). Binding inputs happen as part of the listen() or connect() calls.
+///
+/// Non-blocking connections should be supported by calling connect() with the nonblock flag. Then you poll on the resulting connection for output. Once poll returns, you can call get-remote-address() to determine the connection status and receive(connection, 1) to collect the error status. This follows the existing usage under POSIX.
 interface wasi-tcp {
-  /// A socket pseudo-handle. In the future, this will be replaced by a handle type.
-  type socket = u32
+  // TODO: use { network } from wasi-net
+  type network = u32
 
-  /// An asynchronous operation. See the comments on `wasi-future` in the
-  /// `wasi-poll` interface for details.
-  // TODO: `use` the `wasi-poll` version
-  type wasi-future = u32
+  // TODO: use { ip-socket-address } from wasi-ip
+  type ipv4-address = tuple<u8, u8, u8, u8>
+  type ipv6-address = tuple<u16, u16, u16, u16, u16, u16, u16, u16>
+  record ipv4-socket-address {
+      address: ipv4-address,
+      port: u16,
+  }
+  record ipv6-socket-address {
+      address: ipv6-address,
+      port: u16,
+      flow-info: u32,
+      scope-id: u32,
+  }
+  variant ip-socket-address {
+      ipv4(ipv4-socket-address),
+      ipv6(ipv6-socket-address),
+  }
 
-  /// Errors which may be encountered when performing socket-related operations
-  // TODO: expand this list
-  enum error {
+  /// TODO: `use` the `wasi-poll` version
+  type wasi-stream = u32
+
+  /// Size of a range of bytes in memory.
+  type size = u32
+
+  /// Size of a range of bytes that may be ready to be read.
+  type io-size = u64
+
+  /// Error codes returned by functions.
+  /// Not all of these error codes are returned by the functions provided by this
+  /// API; some are used in higher-level library layers, and others are provided
+  /// merely for alignment with POSIX.
+  enum errno {
+      /// Permission denied.
+      access,
+      /// Address in use.
+      addrinuse,
+      /// Address not available.
+      addrnotavail,
+      /// Address family not supported.
+      afnosupport,
+      /// Resource unavailable, or operation would block.
+      again,
+      /// Connection already in progress.
+      already,
+      /// Bad descriptor.
+      badf,
+      /// Device or resource busy.
+      busy,
+      /// Connection aborted.
       connection-aborted,
+      /// Connection refused.
       connection-refused,
+      /// Connection reset.
       connection-reset,
+      /// Resource deadlock would occur.
+      deadlock,
+      /// Destination address required.
+      destaddrreq,
+      /// Host is unreachable.
       host-unreachable,
+      /// Illegal byte sequence.
+      ilseq,
+      /// Operation in progress.
+      inprogress,
+      /// Interrupted function.
+      intr,
+      /// Invalid argument.
+      inval,
+      /// I/O error.
+      io,
+      /// Socket is connected.
+      isconn,
+      /// Message too large.
+      msgsize,
+      /// Multihop attempted.
+      multihop,
+      /// Filename too long.
+      nametoolong,
+      /// Network is down.
       network-down,
+      /// Connection aborted by network.
+      network-reset,
+      /// Network unreachable.
       network-unreachable,
-      timeout
+      /// No buffer space available.
+      nobufs,
+      /// No such file or directory.
+      noent,
+      /// Not enough space.
+      nomem,
+      /// Protocol not available.
+      noprotoopt,
+      /// Function not supported.
+      nosys,
+      /// State not recoverable.
+      notrecoverable,
+      /// Not supported, or operation not supported on socket.
+      notsup,
+      /// Value too large to be stored in data type.
+      overflow,
+      /// Operation not permitted.
+      perm,
+      /// Connection timed out.
+      timedout,
   }
 
-  /// Result of querying bytes readable or writable for a `socket`
-  record bytes-result {
-      /// Indicates the number of bytes readable or writable for a still-open socket
-      nbytes: u64,
-      /// Indicates whether the other end of the stream has disconnected, in which case
-      /// no further data will be received (when reading) or accepted (when writing) on
-      /// this stream.
-      is-closed: bool
+  /// Listener flags.
+  flags listener-flags {
+      /// Equivalent to `O_NONBLOCK`.
+      nonblock,
   }
+
+  /// Connection flags.
+  flags connection-flags {
+      /// Equivalent to `SO_KEEPALIVE`.
+      keepalive,
+
+      /// Equivalent to `O_NONBLOCK`.
+      nonblock,
+
+      /// Equivalent to `TCP_NODELAY`.
+      nodelay,
+  }
+
+  /// A "socket" descriptor for a TCP listener. In the future, this will be
+  /// replaced by handle types.
+  type tcp-listener = u32
+
+  /// A "socket" descriptor for a TCP connection. In the future, this will be
+  /// replaced by handle types.
+  type tcp-connection = u32
+
+  /// Creates a new listener.
+  ///
+  /// If the IP address is zero (`0.0.0.0` in IPv4, `::` in IPv6), the
+  /// implementation will decide which network address to bind to.
+  ///
+  /// If the TCP/UDP port is zero, the socket will be bound to an
+  /// unspecified free port.
+  ///
+  /// The listener should be destroyed with `close()` when no longer in use.
+  listen: func(
+      network: network,
+      address: ip-socket-address,
+      backlog: option<u32>,
+      %flags: listener-flags
+  ) -> result<tcp-listener, errno>
+
+  /// Accepts a new incoming connection.
+  ///
+  /// When in non-blocking mode, this function will return `errno::again`
+  /// when no new incoming connection is immediately available. This is an
+  /// indication to poll for incoming data on the listener. Otherwise, this
+  /// function will block until an incoming connection is available.
+  accept: func(
+      listener: tcp-listener,
+      %flags: connection-flags
+  ) -> result<tuple<tcp-connection, ip-socket-address>, errno>
+
+  /// Connect to a remote endpoint.
+  ///
+  /// If the local IP address is zero (`0.0.0.0` in IPv4, `::` in IPv6), the
+  /// implementation will decide which network address to bind to.
+  ///
+  /// If the local TCP/UDP port is zero, the socket will be bound to an
+  /// unspecified free port.
+  ///
+  ///  References
+  /// - https://pubs.opengroup.org/onlinepubs/9699919799/functions/bind.html
+  /// - https://man7.org/linux/man-pages/man2/bind.2.html
+  /// - https://pubs.opengroup.org/onlinepubs/9699919799/functions/connect.html
+  /// - https://man7.org/linux/man-pages/man2/connect.2.html
+  connect: func(
+      network: network,
+      local-address: ip-socket-address,
+      remote-address: ip-socket-address,
+      %flags: connection-flags,
+  ) -> result<tcp-connection, errno>
+
+  /// Send bytes to the remote connection.
+  ///
+  /// This function may not successfully send all bytes. Check the number of
+  /// bytes returned.
+  ///
+  /// Note: This is similar to `pwrite` in POSIX.
+  send: func(connection: tcp-connection, bytes: list<u8>) -> result<size, errno>
+
+  /// Receive bytes from the remote connection.
+  ///
+  /// This function receives **at most** `length` bytes from the remote
+  /// connection.
+  ///
+  /// Note: This is similar to `recv` in POSIX.
+  receive: func(connection: tcp-connection, length: size) -> result<tuple<list<u8>, bool>, errno>
+
+  /// Get the current bound address.
+  ///
+  /// References
+  /// - https://pubs.opengroup.org/onlinepubs/9699919799/functions/getsockname.html
+  /// - https://man7.org/linux/man-pages/man2/getsockname.2.html
+  get-listener-local-address: func(listener: tcp-listener) -> result<ip-socket-address, errno>
+
+  /// Get the current bound address.
+  ///
+  /// References
+  /// - https://pubs.opengroup.org/onlinepubs/9699919799/functions/getsockname.html
+  /// - https://man7.org/linux/man-pages/man2/getsockname.2.html
+  get-tcp-connection-local-address: func(connection: tcp-connection) -> result<ip-socket-address, errno>
+
+  /// Get the remote address.
+  ///
+  /// References
+  /// - https://pubs.opengroup.org/onlinepubs/9699919799/functions/getpeername.html
+  /// - https://man7.org/linux/man-pages/man2/getpeername.2.html
+  get-remote-address: func(connection: tcp-connection) -> result<ip-socket-address, errno>
+
+  /// Get the flags set for the connection.
+  get-flags: func(connection: tcp-connection) -> result<connection-flags, errno>
+
+  /// Sets the flags for the connection.
+  set-flags: func(connection: tcp-connection, %flags: connection-flags) -> result<_, errno>
+
+  /// Gets the receive-buffer size.
+  ///
+  /// Note: this is only a hint. Implementations may internally handle this
+  /// in any way, including ignoring it.
+  ///
+  /// Equivalent to `SO_RCVBUF`.
+  get-receive-buffer-size: func(connection: tcp-connection) -> result<size, errno>
+
+  /// Gets the receive-buffer size.
+  ///
+  /// Note: this is only a hint. Implementations may internally handle this
+  /// in any way, including ignoring it.
+  ///
+  /// Equivalent to `SO_RCVBUF`.
+  set-receive-buffer-size: func(connection: tcp-connection, value: size) -> result<_, errno>
+
+  /// Gets the send-buffer size.
+  ///
+  /// Note: this is only a hint. Implementations may internally handle this
+  /// in any way, including ignoring it.
+  ///
+  /// Equivalent to `SO_SNDBUF`.
+  get-send-buffer-size: func(connection: tcp-connection) -> result<size, errno>
+
+  /// Sets the send-buffer size.
+  ///
+  /// Note: this is only a hint. Implementations may internally handle this
+  /// in any way, including ignoring it.
+  ///
+  /// Equivalent to `SO_SNDBUF`.
+  set-send-buffer-size: func(connection: tcp-connection, value: size) -> result<_, errno>
 
   /// Query the specified `socket` for how many bytes are available to read.
-  bytes-readable: func(s: socket) -> result<bytes-result, error>
+  bytes-readable: func(s: tcp-connection) -> result<tuple<io-size, bool>, errno>
 
   /// Query the specified `socket` for the number of bytes ready to be accepted.
-  bytes-writable: func(s: socket) -> result<bytes-result, error>
+  bytes-writable: func(s: tcp-connection) -> result<tuple<io-size, bool>, errno>
+
+  /// Return a stream for reading from a TCP connection.
+  ///
+  /// Note: This allows using `read-stream`, which is similar to `read` in POSIX.
+  read-via-stream: func(
+      /// The resource to operate on.
+      connection: tcp-connection,
+  ) -> result<wasi-stream, errno>
+
+  /// Return a stream for writing to a TCP connection.
+  ///
+  /// Note: This allows using `write-stream`, which is similar to `write` in POSIX.
+  write-via-stream: func(
+      /// The resource to operate on.
+      connection: tcp-connection,
+  ) -> result<wasi-stream, errno>
 }
 
 world wasi {
@@ -1167,8 +1484,10 @@ world wasi {
   import wasi-filesystem: wasi-filesystem
   import wasi-random: wasi-random
   import wasi-poll: wasi-poll
-  import wasi-tcp: wasi-tcp
   import wasi-exit: wasi-exit
+  import wasi-tcp: wasi-tcp
+  import wasi-ip: wasi-ip
+  import wasi-dns: wasi-dns
 
   default export command
 }
