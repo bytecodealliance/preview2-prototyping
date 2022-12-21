@@ -2,7 +2,6 @@ use crate::clocks::WasiMonotonicClock;
 use crate::stream::WasiStream;
 use crate::Error;
 use bitflags::bitflags;
-use cap_std::time::{Duration, Instant};
 
 bitflags! {
     pub struct RwEventFlags: u32 {
@@ -35,19 +34,18 @@ impl<'a> RwSubscription<'a> {
 
 pub struct MonotonicClockSubscription<'a> {
     pub clock: &'a dyn WasiMonotonicClock,
-    pub deadline: Instant,
-    pub precision: Duration,
+    pub deadline: u64,
 }
 
 impl<'a> MonotonicClockSubscription<'a> {
-    pub fn now(&self) -> Instant {
-        self.clock.now(self.precision)
+    pub fn now(&self) -> u64 {
+        self.clock.now()
     }
-    pub fn duration_until(&self) -> Option<Duration> {
-        self.deadline.checked_duration_since(self.now())
+    pub fn duration_until(&self) -> Option<u64> {
+        self.deadline.checked_sub(self.now())
     }
     pub fn result(&self) -> Option<Result<(), Error>> {
-        if self.now().checked_duration_since(self.deadline).is_some() {
+        if self.now().checked_sub(self.deadline).is_some() {
             Some(Ok(()))
         } else {
             None

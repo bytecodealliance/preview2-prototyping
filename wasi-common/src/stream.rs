@@ -25,14 +25,14 @@ pub trait WasiStream: Send + Sync {
         None
     }
 
-    async fn read(&mut self, _buf: &mut [u8]) -> Result<u64, Error> {
+    async fn read(&mut self, _buf: &mut [u8]) -> Result<(u64, bool), Error> {
         Err(Error::badf())
     }
 
     async fn read_vectored<'a>(
         &mut self,
         _bufs: &mut [std::io::IoSliceMut<'a>],
-    ) -> Result<u64, Error> {
+    ) -> Result<(u64, bool), Error> {
         Err(Error::badf())
     }
 
@@ -52,36 +52,40 @@ pub trait WasiStream: Send + Sync {
         false
     }
 
-    async fn splice(&mut self, dst: &mut dyn WasiStream, nelem: u64) -> Result<u64, Error> {
+    async fn splice(&mut self, dst: &mut dyn WasiStream, nelem: u64) -> Result<(u64, bool), Error> {
         let mut nspliced = 0;
+        let mut saw_end = false;
 
         // TODO: Optimize by splicing more than one byte at a time.
         for _ in 0..nelem {
             let mut buf = [0u8];
-            let num = self.read(&mut buf).await?;
-            if num == 0 {
-                break;
-            }
+            let (num, end) = self.read(&mut buf).await?;
             dst.write(&buf).await?;
             nspliced += num;
+            if end {
+                saw_end = true;
+                break;
+            }
         }
 
-        Ok(nspliced)
+        Ok((nspliced, saw_end))
     }
 
-    async fn skip(&mut self, nelem: u64) -> Result<u64, Error> {
+    async fn skip(&mut self, nelem: u64) -> Result<(u64, bool), Error> {
         let mut nread = 0;
+        let mut saw_end = false;
 
         // TODO: Optimize by reading more than one byte at a time.
         for _ in 0..nelem {
-            let num = self.read(&mut [0]).await?;
-            if num == 0 {
+            let (num, end) = self.read(&mut [0]).await?;
+            nread += num;
+            if end {
+                saw_end = true;
                 break;
             }
-            nread += num;
         }
 
-        Ok(nread)
+        Ok((nread, saw_end))
     }
 
     async fn write_repeated(&mut self, byte: u8, nelem: u64) -> Result<u64, Error> {

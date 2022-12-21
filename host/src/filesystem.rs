@@ -247,19 +247,19 @@ impl wasi_filesystem::WasiFilesystem for WasiCtx {
         fd: wasi_filesystem::Descriptor,
         len: wasi_filesystem::Size,
         offset: wasi_filesystem::Filesize,
-    ) -> HostResult<Vec<u8>, wasi_filesystem::Errno> {
+    ) -> HostResult<(Vec<u8>, bool), wasi_filesystem::Errno> {
         let f = self.table_mut().get_file_mut(fd).map_err(convert)?;
 
         let mut buffer = vec![0; len.try_into().unwrap()];
 
-        let bytes_read = f
+        let (bytes_read, end) = f
             .read_vectored_at(&mut [IoSliceMut::new(&mut buffer)], offset)
             .await
             .map_err(convert)?;
 
         buffer.truncate(bytes_read.try_into().unwrap());
 
-        Ok(buffer)
+        Ok((buffer, end))
     }
 
     async fn pwrite(

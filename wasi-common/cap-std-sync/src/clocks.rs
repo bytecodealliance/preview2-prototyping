@@ -1,60 +1,85 @@
-use crate::Table;
-use cap_std::time::{Duration, Instant, SystemTime};
+use cap_std::time::{Duration, Instant, SystemClock};
 use cap_std::{ambient_authority, AmbientAuthority};
 use cap_time_ext::{MonotonicClockExt, SystemClockExt};
-use wasi_common::clocks::{WallClock, WasiClocks, WasiMonotonicClock, WasiSystemClock};
+use wasi_common::clocks::{WasiClocks, WasiMonotonicClock, WasiWallClock};
 
-pub struct SystemClock(cap_std::time::SystemClock);
+pub struct WallClock {
+    clock: cap_std::time::SystemClock,
+    ambient_authority: AmbientAuthority,
+}
 
-impl SystemClock {
+impl WallClock {
     pub fn new(ambient_authority: AmbientAuthority) -> Self {
-        SystemClock(cap_std::time::SystemClock::new(ambient_authority))
+        Self {
+            clock: cap_std::time::SystemClock::new(ambient_authority),
+            ambient_authority,
+        }
     }
 }
-impl WasiSystemClock for SystemClock {
+impl WasiWallClock for WallClock {
     fn resolution(&self) -> Duration {
-        self.0.resolution()
+        self.clock.resolution()
     }
-    fn now(&self, precision: Duration) -> SystemTime {
-        self.0.now_with(precision)
+    fn now(&self) -> Duration {
+        self.clock
+            .now()
+            .duration_since(SystemClock::UNIX_EPOCH)
+            .unwrap()
+    }
+    fn dup(&self) -> Box<dyn WasiWallClock + Send + Sync> {
+        let clock = cap_std::time::SystemClock::new(self.ambient_authority);
+        Box::new(WallClock {
+            clock,
+            ambient_authority: self.ambient_authority,
+        })
     }
 }
 
-pub struct MonotonicClock(cap_std::time::MonotonicClock);
+pub struct MonotonicClock {
+    clock: cap_std::time::MonotonicClock,
+    initial: Instant,
+    ambient_authority: AmbientAuthority,
+}
 
 impl MonotonicClock {
     pub fn new(ambient_authority: AmbientAuthority) -> Self {
-        MonotonicClock(cap_std::time::MonotonicClock::new(ambient_authority))
+        let clock = cap_std::time::MonotonicClock::new(ambient_authority);
+        let initial = clock.now();
+        MonotonicClock {
+            clock,
+            initial,
+            ambient_authority,
+        }
     }
 }
 impl WasiMonotonicClock for MonotonicClock {
-    fn resolution(&self) -> Duration {
-        self.0.resolution()
+    fn resolution(&self) -> u64 {
+        self.clock.resolution().as_nanos().try_into().unwrap()
     }
-    fn now(&self, precision: Duration) -> Instant {
-        self.0.now_with(precision)
+    fn now(&self) -> u64 {
+        self.clock
+            .now()
+            .duration_since(self.initial)
+            .as_nanos()
+            .try_into()
+            .unwrap()
+    }
+    fn dup(&self) -> Box<dyn WasiMonotonicClock + Send + Sync> {
+        let clock = cap_std::time::MonotonicClock::new(self.ambient_authority);
+        Box::new(MonotonicClock {
+            clock,
+            initial: self.initial,
+            ambient_authority: self.ambient_authority,
+        })
     }
 }
 
-pub fn clocks_ctx(table: &mut Table) -> WasiClocks {
-    let system = Box::new(SystemClock::new(ambient_authority()));
-    let monotonic = cap_std::time::MonotonicClock::new(ambient_authority());
-    let creation_time = monotonic.now();
-    let monotonic = Box::new(MonotonicClock(monotonic)) as Box<dyn WasiMonotonicClock>;
-
-    let default_monotonic = table
-        .push(Box::new(wasi_common::clocks::MonotonicClock::from(
-            monotonic.as_ref(),
-        )))
-        .unwrap();
-
-    let default_wall = table.push(Box::<WallClock>::default()).unwrap();
+pub fn clocks_ctx() -> WasiClocks {
+    let default_monotonic_clock = Box::new(MonotonicClock::new(ambient_authority()));
+    let default_wall_clock = Box::new(WallClock::new(ambient_authority()));
 
     WasiClocks {
-        system,
-        monotonic,
-        creation_time,
-        default_monotonic,
-        default_wall,
+        default_monotonic_clock,
+        default_wall_clock,
     }
 }

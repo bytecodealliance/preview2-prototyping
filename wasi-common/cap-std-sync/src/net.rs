@@ -7,7 +7,7 @@ use io_lifetimes::{AsFd, BorrowedFd};
 use io_lifetimes::{AsSocket, BorrowedSocket};
 use std::any::Any;
 use std::convert::TryInto;
-use std::io;
+use std::io::{self, Read, Write};
 use system_interface::fs::GetSetFdFlags;
 use system_interface::io::IoExt;
 use system_interface::io::IsReadWrite;
@@ -284,53 +284,59 @@ macro_rules! wasi_stream_write_impl {
                 Some(self.0.as_raw_handle_or_socket())
             }
 
-            async fn read(&mut self, buf: &mut [u8]) -> Result<u64, Error> {
-                use io::Read;
-                let n = Read::read(&mut &*self.as_socketlike_view::<$std_ty>(), buf)?;
-                Ok(n.try_into()?)
+            async fn read(&mut self, buf: &mut [u8]) -> Result<(u64, bool), Error> {
+                match Read::read(&mut &*self.as_socketlike_view::<$std_ty>(), buf) {
+                    Ok(0) => Ok((0, true)),
+                    Ok(n) => Ok((n as u64, false)),
+                    Err(err) if err.kind() == io::ErrorKind::Interrupted => Ok((0, false)),
+                    Err(err) => Err(err.into()),
+                }
             }
             async fn read_vectored<'a>(
                 &mut self,
                 bufs: &mut [io::IoSliceMut<'a>],
-            ) -> Result<u64, Error> {
-                use io::Read;
-                let n = Read::read_vectored(&mut &*self.as_socketlike_view::<$std_ty>(), bufs)?;
-                Ok(n.try_into()?)
+            ) -> Result<(u64, bool), Error> {
+                match Read::read_vectored(&mut &*self.as_socketlike_view::<$std_ty>(), bufs) {
+                    Ok(0) => Ok((0, true)),
+                    Ok(n) => Ok((n as u64, false)),
+                    Err(err) if err.kind() == io::ErrorKind::Interrupted => Ok((0, false)),
+                    Err(err) => Err(err.into()),
+                }
             }
             #[cfg(can_vector)]
             fn is_read_vectored(&self) -> bool {
-                use io::Read;
                 Read::is_read_vectored(&mut &*self.as_socketlike_view::<$std_ty>())
             }
             async fn write(&mut self, buf: &[u8]) -> Result<u64, Error> {
-                use io::Write;
                 let n = Write::write(&mut &*self.as_socketlike_view::<$std_ty>(), buf)?;
                 Ok(n.try_into()?)
             }
             async fn write_vectored<'a>(&mut self, bufs: &[io::IoSlice<'a>]) -> Result<u64, Error> {
-                use io::Write;
                 let n = Write::write_vectored(&mut &*self.as_socketlike_view::<$std_ty>(), bufs)?;
                 Ok(n.try_into()?)
             }
             #[cfg(can_vector)]
             fn is_write_vectored(&self) -> bool {
-                use io::Write;
                 Write::is_write_vectored(&mut &*self.as_socketlike_view::<$std_ty>())
             }
-            async fn splice(&mut self, dst: &mut dyn WasiStream, nelem: u64) -> Result<u64, Error> {
+            async fn splice(
+                &mut self,
+                dst: &mut dyn WasiStream,
+                nelem: u64,
+            ) -> Result<(u64, bool), Error> {
                 if let Some(handle) = dst.pollable_write() {
                     let num = io::copy(
                         &mut io::Read::take(&self.0, nelem),
                         &mut &*handle.as_socketlike_view::<$std_ty>(),
                     )?;
-                    Ok((num))
+                    Ok((num, num < nelem))
                 } else {
                     WasiStream::splice(self, dst, nelem).await
                 }
             }
-            async fn skip(&mut self, nelem: u64) -> Result<u64, Error> {
+            async fn skip(&mut self, nelem: u64) -> Result<(u64, bool), Error> {
                 let num = io::copy(&mut io::Read::take(&self.0, nelem), &mut io::sink())?;
-                Ok(num)
+                Ok((num, num < nelem))
             }
             async fn write_repeated(&mut self, byte: u8, nelem: u64) -> Result<u64, Error> {
                 let num = io::copy(&mut io::Read::take(io::repeat(byte), nelem), &mut self.0)?;

@@ -38,8 +38,8 @@
 //! provide embedders with the same sort of implementation flexibility they
 //! get with WasiFile/WasiDir:
 //!
-//! * Timekeeping: `WasiSystemClock` and `WasiMonotonicClock` provide the two
-//! interfaces for a clock. `WasiSystemClock` represents time as a
+//! * Timekeeping: `WasiWallClock` and `WasiMonotonicClock` provide the two
+//! interfaces for a clock. `WasiWallClock` represents time as a
 //! `cap_std::time::SystemTime`, and `WasiMonotonicClock` represents time as
 //! `cap_std::time::Instant`.
 //! * Randomness: we re-use the `cap_rand::RngCore` trait to represent a
@@ -64,10 +64,9 @@ pub mod sched;
 pub mod stream;
 pub mod table;
 
+pub use cap_fs_ext::SystemTimeSpec;
 pub use cap_rand::RngCore;
-pub use clocks::{
-    MonotonicTimer, SystemTimeSpec, WallTimer, WasiClocks, WasiMonotonicClock, WasiSystemClock,
-};
+pub use clocks::{WasiClocks, WasiMonotonicClock, WasiWallClock};
 pub use connection::WasiConnection;
 pub use ctx::WasiCtx;
 pub use dir::WasiDir;

@@ -1,4 +1,3 @@
-use cap_std::time::Duration;
 use rustix::io::{PollFd, PollFlags};
 use std::convert::TryInto;
 use wasi_common::sched::subscription::{RwEventFlags, Subscription};
@@ -32,8 +31,8 @@ pub async fn poll_oneoff<'a>(poll: &mut Poll<'a>) -> Result<(), Error> {
 
     let ready = loop {
         let poll_timeout = if let Some(t) = poll.earliest_clock_deadline() {
-            let duration = t.duration_until().unwrap_or(Duration::from_secs(0));
-            (duration.as_millis() + 1) // XXX try always rounding up?
+            let duration = t.duration_until().unwrap_or(0);
+            ((duration + 999) / 1000)
                 .try_into()
                 .map_err(|_| Error::overflow().context("poll timeout"))?
         } else {

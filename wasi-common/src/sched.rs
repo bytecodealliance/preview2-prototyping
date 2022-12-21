@@ -1,7 +1,6 @@
 use crate::clocks::WasiMonotonicClock;
 use crate::stream::WasiStream;
-use crate::Error;
-use cap_std::time::Instant;
+use crate::{Error, ErrorExt};
 pub mod subscription;
 pub use cap_std::time::Duration;
 
@@ -43,18 +42,22 @@ impl<'a> Poll<'a> {
     pub fn subscribe_monotonic_clock(
         &mut self,
         clock: &'a dyn WasiMonotonicClock,
-        deadline: Instant,
-        precision: Duration,
+        deadline: u64,
+        absolute: bool,
         ud: Userdata,
-    ) {
+    ) -> Result<(), Error> {
+        let deadline = if absolute {
+            deadline
+                .checked_sub(clock.now())
+                .ok_or_else(Error::overflow)?
+        } else {
+            deadline
+        };
         self.subs.push((
-            Subscription::MonotonicClock(MonotonicClockSubscription {
-                clock,
-                deadline,
-                precision,
-            }),
+            Subscription::MonotonicClock(MonotonicClockSubscription { clock, deadline }),
             ud,
         ));
+        Ok(())
     }
     pub fn subscribe_read(&mut self, stream: &'a dyn WasiStream, ud: Userdata) {
         self.subs

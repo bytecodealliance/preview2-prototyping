@@ -102,17 +102,25 @@ impl WasiFile for File {
             .set_times(convert_systimespec(atime), convert_systimespec(mtime))?;
         Ok(())
     }
-    async fn read_at<'a>(&mut self, buf: &mut [u8], offset: u64) -> Result<u64, Error> {
-        let n = self.0.read_at(buf, offset)?;
-        Ok(n.try_into()?)
+    async fn read_at<'a>(&mut self, buf: &mut [u8], offset: u64) -> Result<(u64, bool), Error> {
+        match self.0.read_at(buf, offset) {
+            Ok(0) => Ok((0, true)),
+            Ok(n) => Ok((n as u64, false)),
+            Err(err) if err.kind() == io::ErrorKind::Interrupted => Ok((0, false)),
+            Err(err) => Err(err.into()),
+        }
     }
     async fn read_vectored_at<'a>(
         &mut self,
         bufs: &mut [io::IoSliceMut<'a>],
         offset: u64,
-    ) -> Result<u64, Error> {
-        let n = self.0.read_vectored_at(bufs, offset)?;
-        Ok(n.try_into()?)
+    ) -> Result<(u64, bool), Error> {
+        match self.0.read_vectored_at(bufs, offset) {
+            Ok(0) => Ok((0, true)),
+            Ok(n) => Ok((n as u64, false)),
+            Err(err) if err.kind() == io::ErrorKind::Interrupted => Ok((0, false)),
+            Err(err) => Err(err.into()),
+        }
     }
     fn is_read_vectored_at(&self) -> bool {
         self.0.is_read_vectored_at()

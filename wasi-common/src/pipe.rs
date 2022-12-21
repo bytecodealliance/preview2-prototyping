@@ -104,9 +104,13 @@ impl<R: Read + Any + Send + Sync> WasiStream for ReadPipe<R> {
         self
     }
 
-    async fn read(&mut self, buf: &mut [u8]) -> Result<u64, Error> {
-        let n = self.borrow().read(buf)?;
-        Ok(n.try_into()?)
+    async fn read(&mut self, buf: &mut [u8]) -> Result<(u64, bool), Error> {
+        match self.borrow().read(buf) {
+            Ok(0) => Ok((0, true)),
+            Ok(n) => Ok((n.try_into()?, false)),
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => Ok((0, false)),
+            Err(e) => Err(e.into()),
+        }
     }
 
     // TODO: Optimize for pipes.
@@ -120,12 +124,12 @@ impl<R: Read + Any + Send + Sync> WasiStream for ReadPipe<R> {
     }
     */
 
-    async fn skip(&mut self, nelem: u64) -> Result<u64, Error> {
+    async fn skip(&mut self, nelem: u64) -> Result<(u64, bool), Error> {
         let num = io::copy(
             &mut io::Read::take(&mut *self.borrow(), nelem),
             &mut io::sink(),
         )?;
-        Ok(num)
+        Ok((num, num < nelem))
     }
 
     async fn readable(&self) -> Result<(), Error> {

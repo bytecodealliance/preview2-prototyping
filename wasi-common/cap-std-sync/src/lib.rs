@@ -54,12 +54,11 @@ pub struct WasiCtxBuilder(WasiCtx);
 
 impl WasiCtxBuilder {
     pub fn new() -> Self {
-        let mut table = Table::new();
         WasiCtxBuilder(WasiCtx::new(
             random_ctx(),
-            clocks_ctx(&mut table),
+            clocks_ctx(),
             sched_ctx(),
-            table,
+            Table::new(),
         ))
     }
     pub fn stdin(mut self, f: Box<dyn WasiStream>) -> Self {

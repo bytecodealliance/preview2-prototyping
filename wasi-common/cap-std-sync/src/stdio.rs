@@ -41,13 +41,24 @@ impl WasiStream for Stdin {
         None
     }
 
-    async fn read(&mut self, buf: &mut [u8]) -> Result<u64, Error> {
-        let n = Read::read(&mut self.0, buf)?;
-        Ok(n.try_into()?)
+    async fn read(&mut self, buf: &mut [u8]) -> Result<(u64, bool), Error> {
+        match Read::read(&mut self.0, buf) {
+            Ok(0) => Ok((0, true)),
+            Ok(n) => Ok((n as u64, false)),
+            Err(err) if err.kind() == io::ErrorKind::Interrupted => Ok((0, false)),
+            Err(err) => Err(err.into()),
+        }
     }
-    async fn read_vectored<'a>(&mut self, bufs: &mut [io::IoSliceMut<'a>]) -> Result<u64, Error> {
-        let n = Read::read_vectored(&mut self.0, bufs)?;
-        Ok(n.try_into()?)
+    async fn read_vectored<'a>(
+        &mut self,
+        bufs: &mut [io::IoSliceMut<'a>],
+    ) -> Result<(u64, bool), Error> {
+        match Read::read_vectored(&mut self.0, bufs) {
+            Ok(0) => Ok((0, true)),
+            Ok(n) => Ok((n as u64, false)),
+            Err(err) if err.kind() == io::ErrorKind::Interrupted => Ok((0, false)),
+            Err(err) => Err(err.into()),
+        }
     }
     #[cfg(can_vector)]
     fn is_read_vectored(&self) {
@@ -75,9 +86,9 @@ impl WasiStream for Stdin {
     }
     */
 
-    async fn skip(&mut self, nelem: u64) -> Result<u64, Error> {
+    async fn skip(&mut self, nelem: u64) -> Result<(u64, bool), Error> {
         let num = io::copy(&mut io::Read::take(&mut self.0, nelem), &mut io::sink())?;
-        Ok(num)
+        Ok((num, num < nelem))
     }
 
     async fn num_ready_bytes(&self) -> Result<u64, Error> {
@@ -129,13 +140,13 @@ macro_rules! wasi_file_write_impl {
                 Some(self.0.as_raw_handle_or_socket())
             }
 
-            async fn read(&mut self, _buf: &mut [u8]) -> Result<u64, Error> {
+            async fn read(&mut self, _buf: &mut [u8]) -> Result<(u64, bool), Error> {
                 Err(Error::badf())
             }
             async fn read_vectored<'a>(
                 &mut self,
                 _bufs: &mut [io::IoSliceMut<'a>],
-            ) -> Result<u64, Error> {
+            ) -> Result<(u64, bool), Error> {
                 Err(Error::badf())
             }
             #[cfg(can_vector)]

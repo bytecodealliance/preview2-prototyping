@@ -75,7 +75,7 @@ pub trait WasiFile: Send + Sync {
         Err(Error::badf())
     }
 
-    async fn read_at<'a>(&mut self, _buf: &mut [u8], _offset: u64) -> Result<u64, Error> {
+    async fn read_at<'a>(&mut self, _buf: &mut [u8], _offset: u64) -> Result<(u64, bool), Error> {
         Err(Error::badf())
     }
 
@@ -83,7 +83,7 @@ pub trait WasiFile: Send + Sync {
         &mut self,
         _bufs: &mut [std::io::IoSliceMut<'a>],
         _offset: u64,
-    ) -> Result<u64, Error> {
+    ) -> Result<(u64, bool), Error> {
         Err(Error::badf())
     }
 
@@ -275,21 +275,24 @@ impl WasiStream for FileStream {
         }
     }
 
-    async fn read(&mut self, buf: &mut [u8]) -> Result<u64, Error> {
+    async fn read(&mut self, buf: &mut [u8]) -> Result<(u64, bool), Error> {
         if !self.reading {
             return Err(Error::badf());
         }
-        let n = self.file.read_at(buf, self.position).await? as i64 as u64;
+        let (n, end) = self.file.read_at(buf, self.position).await?;
         self.position = self.position.wrapping_add(n);
-        Ok(n)
+        Ok((n, end))
     }
-    async fn read_vectored<'a>(&mut self, bufs: &mut [io::IoSliceMut<'a>]) -> Result<u64, Error> {
+    async fn read_vectored<'a>(
+        &mut self,
+        bufs: &mut [io::IoSliceMut<'a>],
+    ) -> Result<(u64, bool), Error> {
         if !self.reading {
             return Err(Error::badf());
         }
-        let n = self.file.read_vectored_at(bufs, self.position).await? as i64 as u64;
+        let (n, end) = self.file.read_vectored_at(bufs, self.position).await?;
         self.position = self.position.wrapping_add(n);
-        Ok(n)
+        Ok((n, end))
     }
     #[cfg(can_vector)]
     fn is_read_vectored_at(&self) -> bool {
@@ -333,15 +336,27 @@ impl WasiStream for FileStream {
     }
     */
 
-    async fn skip(&mut self, nelem: u64) -> Result<u64, Error> {
+    async fn skip(&mut self, nelem: u64) -> Result<(u64, bool), Error> {
+        // For a zero-length request, don't do the 1 byte check below.
+        if nelem == 0 {
+            return self.file.read_at(&mut [], 0).await;
+        }
+
         if !self.reading {
             return Err(Error::badf());
         }
-        self.position = self
+
+        let new_position = self
             .position
             .checked_add(nelem)
             .ok_or_else(Error::overflow)?;
-        Ok(nelem)
+
+        let file_size = self.file.get_filestat().await?.size;
+
+        let short_by = new_position.saturating_sub(file_size);
+
+        self.position = new_position - short_by;
+        Ok((nelem - short_by, false))
     }
 
     // TODO: Optimize for file streams.
