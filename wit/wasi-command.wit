@@ -7,6 +7,8 @@ default world wasi-command {
   import wasi-random: pkg.wasi-random
   import wasi-poll: pkg.wasi-poll
   import wasi-tcp: pkg.wasi-tcp
+  import wasi-ip: pkg.wasi-ip
+  import wasi-dns: pkg.wasi-dns
   import wasi-exit: pkg.wasi-exit
 
   export command: func(
