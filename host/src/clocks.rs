@@ -1,5 +1,4 @@
 use crate::{wasi_clocks, wasi_default_clocks, WasiCtx};
-use anyhow::Context;
 use cap_std::time::SystemTime;
 use wasi_common::clocks::{TableMonotonicClockExt, TableWallClockExt};
 
