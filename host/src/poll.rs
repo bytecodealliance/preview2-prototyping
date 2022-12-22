@@ -33,7 +33,7 @@ impl WasiPoll for WasiCtx {
     }
 
     async fn poll_oneoff(&mut self, futures: Vec<WasiFuture>) -> anyhow::Result<Vec<u8>> {
-        use wasi_common::sched::{Poll, SubscriptionResult, Userdata};
+        use wasi_common::sched::{Poll, Userdata};
 
         // Convert `futures` into `Poll` subscriptions.
         let mut poll = Poll::new();
@@ -67,17 +67,8 @@ impl WasiPoll for WasiCtx {
 
         // Convert the results into a list of `u8` to return.
         let mut results = vec![0_u8; len];
-        for (result, data) in poll.results() {
-            let flag = match result {
-                SubscriptionResult::Read(result) => {
-                    matches!(result, Ok((_num_ready, flags)) if !flags.is_empty())
-                }
-                SubscriptionResult::Write(result) => {
-                    matches!(result, Ok((_num_ready, flags)) if !flags.is_empty())
-                }
-                SubscriptionResult::MonotonicClock(result) => result.is_ok(),
-            };
-            results[u64::from(data) as usize] = u8::from(flag);
+        for (_result, data) in poll.results() {
+            results[u64::from(data) as usize] = u8::from(true);
         }
         Ok(results)
     }
