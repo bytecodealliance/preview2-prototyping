@@ -66,7 +66,7 @@ impl WasiPoll for WasiCtx {
         self.sched.poll_oneoff(&mut poll).await?;
 
         // Convert the results into a list of `u8` to return.
-        let mut results = vec![0u8; len];
+        let mut results = vec![0_u8; len];
         for (result, data) in poll.results() {
             let flag = match result {
                 SubscriptionResult::Read(result) => {
@@ -77,7 +77,7 @@ impl WasiPoll for WasiCtx {
                 }
                 SubscriptionResult::MonotonicClock(result) => result.is_ok(),
             };
-            results[u64::from(data) as usize] = flag as u8;
+            results[u64::from(data) as usize] = u8::from(flag);
         }
         Ok(results)
     }

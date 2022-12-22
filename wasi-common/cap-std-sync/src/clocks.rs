@@ -74,6 +74,8 @@ impl WasiMonotonicClock for MonotonicClock {
     }
 
     fn now(&self) -> u64 {
+        // Unwrap here and in `resolution` above; a `u64` is wide enough to
+        // hold over 584 years of nanoseconds.
         self.clock
             .now()
             .duration_since(self.initial)

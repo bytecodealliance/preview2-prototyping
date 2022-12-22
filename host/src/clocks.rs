@@ -65,12 +65,10 @@ impl wasi_clocks::WasiClocks for WasiCtx {
         fd: wasi_clocks::WallClock,
     ) -> anyhow::Result<wasi_clocks::Datetime> {
         let clock = self.table().get_wall_clock(fd)?;
-        let nanos = clock.resolution().as_nanos();
+        let res = clock.resolution();
         Ok(wasi_clocks::Datetime {
-            seconds: (nanos / 1_000_000_000_u128)
-                .try_into()
-                .context("converting wall clock resolution to seconds u64")?,
-            nanoseconds: (nanos % 1_000_000_000_u128).try_into().unwrap(),
+            seconds: res.as_secs(),
+            nanoseconds: res.subsec_nanos(),
         })
     }
 }

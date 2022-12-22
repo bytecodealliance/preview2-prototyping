@@ -1497,12 +1497,8 @@ pub unsafe extern "C" fn poll_oneoff(
                             let timeout = if absolute {
                                 // Convert `clock.timeout` to `Datetime`.
                                 let mut datetime = wasi_clocks::Datetime {
-                                    seconds: unwrap_result(
-                                        (clock.timeout / 1_000_000_000).try_into(),
-                                    ),
-                                    nanoseconds: unwrap_result(
-                                        (clock.timeout % 1_000_000_000).try_into(),
-                                    ),
+                                    seconds: clock.timeout / 1_000_000_000,
+                                    nanoseconds: (clock.timeout % 1_000_000_000) as _,
                                 };
 
                                 // Subtract `now`.
