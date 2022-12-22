@@ -27,18 +27,10 @@ impl WasiStream for Stdin {
     fn pollable_read(&self) -> Option<rustix::fd::BorrowedFd> {
         Some(self.0.as_fd())
     }
-    #[cfg(unix)]
-    fn pollable_write(&self) -> Option<rustix::fd::BorrowedFd> {
-        None
-    }
 
     #[cfg(windows)]
     fn pollable_read(&self) -> Option<io_extras::os::windows::RawHandleOrSocket> {
         Some(self.0.as_raw_handle_or_socket())
-    }
-    #[cfg(windows)]
-    fn pollable_write(&self) -> Option<io_extras::os::windows::RawHandleOrSocket> {
-        None
     }
 
     async fn read(&mut self, buf: &mut [u8]) -> Result<(u64, bool), Error> {
