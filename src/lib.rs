@@ -1478,7 +1478,7 @@ pub unsafe extern "C" fn poll_oneoff(
     let futures = out as *mut c_void as *mut WasiFuture;
     let results = futures.add(nsubscriptions) as *mut c_void as *mut u8;
 
-    State::with_mut(|state| {
+    State::with(|state| {
         state.register_buffer(
             results,
             unwrap(nsubscriptions.checked_mul(mem::size_of::<bool>())),
