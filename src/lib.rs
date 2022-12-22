@@ -2332,6 +2332,8 @@ impl State {
         self.buffer_len.set(buf_len);
     }
 
+    /// Return a handle to the default wall clock, creating one if we
+    /// don't already have one.
     fn default_wall_clock(&self) -> Fd {
         match self.default_wall_clock.get() {
             Some(fd) => fd,
@@ -2345,6 +2347,8 @@ impl State {
         clock
     }
 
+    /// Return a handle to the default monotonic clock, creating one if we
+    /// don't already have one.
     fn default_monotonic_clock(&self) -> Fd {
         match self.default_monotonic_clock.get() {
             Some(fd) => fd,

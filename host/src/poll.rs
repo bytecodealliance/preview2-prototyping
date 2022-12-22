@@ -35,6 +35,7 @@ impl WasiPoll for WasiCtx {
     async fn poll_oneoff(&mut self, futures: Vec<WasiFuture>) -> anyhow::Result<Vec<u8>> {
         use wasi_common::sched::{Poll, SubscriptionResult, Userdata};
 
+        // Convert `futures` into `Poll` subscriptions.
         let mut poll = Poll::new();
         let len = futures.len();
         for (index, future) in futures.into_iter().enumerate() {
@@ -61,8 +62,10 @@ impl WasiPoll for WasiCtx {
             }
         }
 
+        // Do the poll.
         self.sched.poll_oneoff(&mut poll).await?;
 
+        // Convert the results into a list of `u8` to return.
         let mut results = vec![0u8; len];
         for (result, data) in poll.results() {
             let flag = match result {

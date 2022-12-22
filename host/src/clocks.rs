@@ -20,11 +20,13 @@ impl TryFrom<SystemTime> for wasi_clocks::Datetime {
 #[async_trait::async_trait]
 impl wasi_default_clocks::WasiDefaultClocks for WasiCtx {
     async fn default_wall_clock(&mut self) -> anyhow::Result<wasi_clocks::WallClock> {
+        // Create a new handle to the default wall clock.
         let new = self.clocks.default_wall_clock.dup();
         Ok(self.table_mut().push(Box::new(new))?)
     }
 
     async fn default_monotonic_clock(&mut self) -> anyhow::Result<wasi_clocks::MonotonicClock> {
+        // Create a new handle to the default monotonic clock.
         let new = self.clocks.default_monotonic_clock.dup();
         Ok(self.table_mut().push(Box::new(new))?)
     }
