@@ -424,9 +424,6 @@ pub unsafe extern "C" fn fd_fdstat_get(fd: Fd, stat: *mut Fdstat) -> Errno {
             if !flags.contains(wasi_filesystem::DescriptorFlags::WRITE) {
                 fs_rights_base &= !RIGHTS_FD_WRITE;
             }
-            if flags.contains(wasi_filesystem::DescriptorFlags::APPEND) {
-                fs_flags |= FDFLAGS_APPEND;
-            }
             if flags.contains(wasi_filesystem::DescriptorFlags::DSYNC) {
                 fs_flags |= FDFLAGS_DSYNC;
             }
@@ -516,9 +513,6 @@ pub unsafe extern "C" fn fd_fdstat_get(fd: Fd, stat: *mut Fdstat) -> Errno {
 #[no_mangle]
 pub unsafe extern "C" fn fd_fdstat_set_flags(fd: Fd, flags: Fdflags) -> Errno {
     let mut new_flags = wasi_filesystem::DescriptorFlags::empty();
-    if flags & FDFLAGS_APPEND == FDFLAGS_APPEND {
-        new_flags |= wasi_filesystem::DescriptorFlags::APPEND;
-    }
     if flags & FDFLAGS_DSYNC == FDFLAGS_DSYNC {
         new_flags |= wasi_filesystem::DescriptorFlags::DSYNC;
     }
@@ -1774,9 +1768,6 @@ fn flags_from_descriptor_flags(
     }
     if fdflags & wasi::FDFLAGS_RSYNC == wasi::FDFLAGS_RSYNC {
         flags |= wasi_filesystem::DescriptorFlags::RSYNC;
-    }
-    if fdflags & wasi::FDFLAGS_APPEND == wasi::FDFLAGS_APPEND {
-        flags |= wasi_filesystem::DescriptorFlags::APPEND;
     }
     if fdflags & wasi::FDFLAGS_NONBLOCK == wasi::FDFLAGS_NONBLOCK {
         flags |= wasi_filesystem::DescriptorFlags::NONBLOCK;

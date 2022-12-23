@@ -123,9 +123,6 @@ impl Into<wasi_common::file::OFlags> for wasi_filesystem::OFlags {
 impl Into<wasi_common::file::FdFlags> for wasi_filesystem::DescriptorFlags {
     fn into(self) -> wasi_common::file::FdFlags {
         let mut flags = wasi_common::file::FdFlags::empty();
-        if contains(self, wasi_filesystem::DescriptorFlags::APPEND) {
-            flags |= wasi_common::file::FdFlags::APPEND;
-        }
         if contains(self, wasi_filesystem::DescriptorFlags::DSYNC) {
             flags |= wasi_common::file::FdFlags::DSYNC;
         }

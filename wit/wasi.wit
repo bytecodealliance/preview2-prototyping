@@ -259,9 +259,6 @@ interface wasi-filesystem {
       read,
       /// Write mode: Data can be written to.
       write,
-      /// Append mode: Data written to the file is always appended to the file's
-      /// end.
-      append,
       /// Write according to synchronized I/O data integrity completion. Only the
       /// data stored in the file is synchronized.
       dsync,
