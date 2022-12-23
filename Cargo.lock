@@ -121,9 +121,9 @@ checksum = "14c189c53d098945499cdfa7ecc63567cf3886b3332b312a5b4585d8d3a6a610"
 
 [[package]]
 name = "cap-fs-ext"
-version = "1.0.1"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0cd43a11b76b72fd4de1d0358cc3c0a11fed09c2d67caef7c6c0ca3338245d96"
+checksum = "15ed685fe2949d035b080fbe7536b944efffb648af1d34630aa887ca2b132d2b"
 dependencies = [
  "cap-primitives",
  "cap-std",
@@ -133,9 +133,9 @@ dependencies = [
 
 [[package]]
 name = "cap-primitives"
-version = "1.0.1"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e58ae40664c77c3dd4c0df2e5bc97743ede4b814f9970d81228e69d101702e03"
+checksum = "0315442c0232cb9a1c2be55ee289a0e9bf5fd0b0f162be8e7f16673e095f5e09"
 dependencies = [
  "ambient-authority",
  "fs-set-times",
@@ -150,9 +150,9 @@ dependencies = [
 
 [[package]]
 name = "cap-rand"
-version = "1.0.1"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6dcd5285cc063c837f10d80010a29eda2f22fe4ce507229a03a7886f074ee6fd"
+checksum = "b78d30c0b3c656f6193bef0697cff6bd903d9b2b1437c7af3d35a6a9d1a7af2e"
 dependencies = [
  "ambient-authority",
  "rand",
@@ -160,9 +160,9 @@ dependencies = [
 
 [[package]]
 name = "cap-std"
-version = "1.0.1"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b515b8f641ddea066fc2ce25f2c27b60c1f7c2f50f7b8c8c4acfe70a1a51646"
+checksum = "3e9256648eae510b29aae4d52ed71877239a61f9a2494d23ddad7fb6f50e5de8"
 dependencies = [
  "cap-primitives",
  "io-extras",
@@ -578,7 +578,9 @@ dependencies = [
  "async-trait",
  "cap-rand",
  "cap-std",
+ "is-terminal",
  "tempfile",
+ "terminal_size",
  "test-log",
  "test-programs-macros",
  "thiserror",
@@ -1155,6 +1157,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "terminal_size"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb20089a8ba2b69debd491f8d2d023761cbf196e999218c591fa1e7e15a21907"
+dependencies = [
+ "rustix",
+ "windows-sys",
+]
+
+[[package]]
 name = "test-log"
 version = "0.2.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1422,6 +1434,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bitflags",
+ "cap-fs-ext",
  "cap-rand",
  "cap-std",
  "io-extras",
