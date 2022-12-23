@@ -84,6 +84,12 @@ interface wasi-clocks {
   ///
   /// The nanoseconds field of the output is always less than 1000000000.
   wall-clock-resolution: func(clock: wall-clock) -> datetime
+
+  /// Closes a monotonic clock handle.
+  close-monotonic-clock: func(clock: monotonic-clock)
+
+  /// Closes a wall clock handle.
+  close-wall-clock: func(clock: wall-clock)
 }
 
 /// # WASI Default Clocks API
