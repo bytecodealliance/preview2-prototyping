@@ -754,11 +754,8 @@ pub unsafe extern "C" fn fd_read(
 
                 let read_len = unwrap_result(u32::try_from(len));
                 let wasi_stream = streams.get_read_stream()?;
-                //let (data, end) =
-                //wasi_poll::read_stream(wasi_stream, read_len).map_err(|_| ERRNO_IO)?;
-                let t0 = wasi_poll::read_stream(wasi_stream, read_len);
-                let m = t0.map_err(|_| ERRNO_IO);
-                let (data, end) = m?;
+                let (data, end) =
+                    wasi_poll::read_stream(wasi_stream, read_len).map_err(|_| ERRNO_IO)?;
 
                 assert_eq!(data.as_ptr(), ptr);
                 assert!(data.len() <= len);
