@@ -407,9 +407,8 @@ pub unsafe extern "C" fn fd_datasync(fd: Fd) -> Errno {
 pub unsafe extern "C" fn fd_fdstat_get(fd: Fd, stat: *mut Fdstat) -> Errno {
     State::with(|state| match state.get(fd)? {
         Descriptor::Streams(Streams {
-            input: _,
-            output: _,
             type_: StreamType::File(file),
+            ..
         }) => {
             let flags = wasi_filesystem::flags(file.fd)?;
             let type_ = wasi_filesystem::todo_type(file.fd)?;
