@@ -1,6 +1,12 @@
 interface command {
   type descriptor = u32
-  command: func(stdin: descriptor, stdout: descriptor, args: list<string>)
+  command: func(
+    stdin: descriptor,
+    stdout: descriptor,
+    args: list<string>,
+    env-vars: list<tuple<string, string>>,
+    preopens: list<tuple<descriptor, string>>
+  )
 }
 
 interface wasi-exit {

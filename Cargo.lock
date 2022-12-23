@@ -578,6 +578,7 @@ dependencies = [
  "async-trait",
  "cap-rand",
  "cap-std",
+ "tempfile",
  "test-log",
  "test-programs-macros",
  "thiserror",
