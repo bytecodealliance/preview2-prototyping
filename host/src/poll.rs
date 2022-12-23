@@ -22,7 +22,7 @@ enum Future {
     /// Poll for write events.
     Write(WasiStream),
     /// Poll for a monotonic-clock timer.
-    MonotonicClock(wasi_clocks::MonotonicClock, wasi_clocks::Instant, bool),
+    MonotonicClock(wasi_clocks::MonotonicClock, wasi_clocks::Instant),
 }
 
 #[async_trait::async_trait]
@@ -50,14 +50,9 @@ impl WasiPoll for WasiCtx {
                         self.table().get_stream(stream).map_err(convert)?;
                     poll.subscribe_write(wasi_stream, Userdata::from(index as u64));
                 }
-                Future::MonotonicClock(clock, when, absolute) => {
+                Future::MonotonicClock(clock, when) => {
                     let wasi_clock = self.table().get_monotonic_clock(clock).map_err(convert)?;
-                    poll.subscribe_monotonic_clock(
-                        wasi_clock,
-                        when,
-                        absolute,
-                        Userdata::from(index as u64),
-                    )?;
+                    poll.subscribe_monotonic_clock(wasi_clock, when, Userdata::from(index as u64))?;
                 }
             }
         }
@@ -177,10 +172,9 @@ impl WasiPoll for WasiCtx {
         &mut self,
         clock: wasi_clocks::MonotonicClock,
         when: wasi_clocks::Instant,
-        absolute: bool,
     ) -> anyhow::Result<WasiFuture> {
         Ok(self
             .table_mut()
-            .push(Box::new(Future::MonotonicClock(clock, when, absolute)))?)
+            .push(Box::new(Future::MonotonicClock(clock, when)))?)
     }
 }

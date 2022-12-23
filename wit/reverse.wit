@@ -1,3 +1,7 @@
+// TODO: This is mostly a duplicate of wasi.wit, with imports and exports
+// reversed in the world. When we have `use`, we'll be able to deduplicate
+// all the interfaces.
+
 interface command {
   /// TODO: `use` the `wasi-poll` version
   type wasi-stream = u32
@@ -1152,16 +1156,16 @@ interface wasi-tcp {
   bytes-writable: func(s: socket) -> result<bytes-result, error>
 }
 
-world wasi {
-  import wasi-clocks: wasi-clocks
-  import wasi-default-clocks: wasi-default-clocks
-  import wasi-logging: wasi-logging
-  import wasi-stderr: wasi-stderr
-  import wasi-filesystem: wasi-filesystem
-  import wasi-random: wasi-random
-  import wasi-poll: wasi-poll
-  import wasi-tcp: wasi-tcp
-  import wasi-exit: wasi-exit
+world reverse {
+  export wasi-clocks: wasi-clocks
+  export wasi-default-clocks: wasi-default-clocks
+  export wasi-logging: wasi-logging
+  export wasi-stderr: wasi-stderr
+  export wasi-filesystem: wasi-filesystem
+  export wasi-random: wasi-random
+  export wasi-poll: wasi-poll
+  export wasi-tcp: wasi-tcp
+  export wasi-exit: wasi-exit
 
-  default export command
+  import command: command
 }

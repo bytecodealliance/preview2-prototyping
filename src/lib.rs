@@ -418,11 +418,11 @@ pub unsafe extern "C" fn fd_fdstat_get(fd: Fd, stat: *mut Fdstat) -> Errno {
 
             let mut fs_flags = 0;
             let mut fs_rights_base = !0;
-            if !flags.contains(wasi_filesystem::DescriptorFlags::READ) {
-                fs_rights_base &= !RIGHTS_FD_READ;
+            if flags.contains(wasi_filesystem::DescriptorFlags::READ) {
+                fs_rights_base |= RIGHTS_FD_READ;
             }
-            if !flags.contains(wasi_filesystem::DescriptorFlags::WRITE) {
-                fs_rights_base &= !RIGHTS_FD_WRITE;
+            if flags.contains(wasi_filesystem::DescriptorFlags::WRITE) {
+                fs_rights_base |= RIGHTS_FD_WRITE;
             }
             if flags.contains(wasi_filesystem::DescriptorFlags::DSYNC) {
                 fs_flags |= FDFLAGS_DSYNC;
@@ -435,6 +435,9 @@ pub unsafe extern "C" fn fd_fdstat_get(fd: Fd, stat: *mut Fdstat) -> Errno {
             }
             if flags.contains(wasi_filesystem::DescriptorFlags::SYNC) {
                 fs_flags |= FDFLAGS_SYNC;
+            }
+            if fs_filetype == wasi::FILETYPE_REGULAR_FILE {
+                fs_rights_base |= RIGHTS_FD_SEEK | RIGHTS_FD_TELL;
             }
             let fs_rights_inheriting = fs_rights_base;
 
@@ -1500,7 +1503,7 @@ pub unsafe extern "C" fn poll_oneoff(
 
                                 // Subtract `now`.
                                 let now = wasi_clocks::wall_clock_now(state.default_wall_clock());
-                                datetime.seconds -= now.seconds;
+                                datetime.seconds = datetime.seconds.saturating_sub(now.seconds);
                                 if datetime.nanoseconds < now.nanoseconds {
                                     datetime.seconds -= 1;
                                     datetime.nanoseconds += 1_000_000_000;
@@ -1522,15 +1525,25 @@ pub unsafe extern "C" fn poll_oneoff(
                             wasi_poll::subscribe_monotonic_clock(
                                 state.default_monotonic_clock(),
                                 timeout,
-                                false,
                             )
                         }
 
-                        CLOCKID_MONOTONIC => wasi_poll::subscribe_monotonic_clock(
-                            state.default_monotonic_clock(),
-                            clock.timeout,
-                            absolute,
-                        ),
+                        CLOCKID_MONOTONIC => {
+                            let mut timeout = clock.timeout;
+
+                            if absolute {
+                                // Subtract `now`.
+                                let now = wasi_clocks::monotonic_clock_now(
+                                    state.default_monotonic_clock(),
+                                );
+                                timeout = timeout.saturating_sub(now);
+                            }
+
+                            wasi_poll::subscribe_monotonic_clock(
+                                state.default_monotonic_clock(),
+                                timeout,
+                            )
+                        }
 
                         _ => return Err(ERRNO_INVAL),
                     }
