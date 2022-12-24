@@ -57,6 +57,27 @@ jobs:
         name: wasi_snapshot_preview1.command.wasm
         path: wasi_snapshot_preview1.command.wasm
     - run: cargo build --target wasm32-unknown-unknown --release
+
+    - run: cargo install --git https://github.com/bytecodealliance/wit-bindgen wit-bindgen-cli
+    - run: wit-bindgen guest c wit/wasi.wit
+    - uses: actions/upload-artifact@v3
+      with:
+        name: wasi.c
+        path: wasi.c
+    - uses: actions/upload-artifact@v3
+      with:
+        name: wasi.h
+        path: wasi.h
+    - uses: actions/upload-artifact@v3
+      with:
+        name: wasi_component_type.o
+        path: wasi_component_type.o
+    - run: wit-bindgen guest rust wit/wasi.wit
+    - uses: actions/upload-artifact@v3
+      with:
+        name: wasi.rs
+        path: wasi.rs
+
     - uses: actions/upload-artifact@v3
       with:
         name: wasi_snapshot_preview1.wasm
@@ -72,3 +93,7 @@ jobs:
         files: |
           target/wasm32-unknown-unknown/release/wasi_snapshot_preview1.wasm
           wasi_snapshot_preview1.command.wasm
+          wasi.c
+          wasi.h
+          wasi_component_type.o
+          wasi.rs
