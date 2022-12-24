@@ -11,7 +11,7 @@ interface command {
     args: list<string>,
     env-vars: list<tuple<string, string>>,
     preopens: list<tuple<descriptor, string>>
-  )
+  ) -> result
 }
 
 interface wasi-exit {
