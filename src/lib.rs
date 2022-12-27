@@ -1244,8 +1244,6 @@ pub unsafe extern "C" fn path_open(
     let mode = wasi_filesystem::Mode::READABLE | wasi_filesystem::Mode::WRITEABLE;
 
     State::with_mut(|state| {
-        let desc = state.get_mut(fd)?;
-
         let file = state.get_dir(fd)?;
         let result = wasi_filesystem::open_at(file.fd, at_flags, path, o_flags, flags, mode)?;
         let desc = Descriptor::Streams(Streams {
