@@ -303,7 +303,7 @@ pub extern "C" fn clock_res_get(id: Clockid, resolution: &mut Timestamp) -> Errn
             }
             CLOCKID_REALTIME => {
                 let res = wasi_clocks::wall_clock_resolution(state.default_wall_clock());
-                *resolution = u64::from(res.nanoseconds)
+                *resolution = Timestamp::from(res.nanoseconds)
                     .checked_add(res.seconds)
                     .and_then(|secs| secs.checked_mul(1_000_000_000))
                     .ok_or(ERRNO_OVERFLOW)?;
@@ -329,7 +329,7 @@ pub unsafe extern "C" fn clock_time_get(
             }
             CLOCKID_REALTIME => {
                 let res = wasi_clocks::wall_clock_now(state.default_wall_clock());
-                *time = u64::from(res.nanoseconds)
+                *time = Timestamp::from(res.nanoseconds)
                     .checked_add(res.seconds)
                     .and_then(|secs| secs.checked_mul(1_000_000_000))
                     .ok_or(ERRNO_OVERFLOW)?;
@@ -764,7 +764,8 @@ pub unsafe extern "C" fn fd_read(
 
                 // If this is a file, keep the current-position pointer up to date.
                 if let StreamType::File(file) = &streams.type_ {
-                    file.position.set(file.position.get() + data.len() as u64);
+                    file.position
+                        .set(file.position.get() + data.len() as wasi_filesystem::Filesize);
                 }
 
                 let len = data.len();
@@ -1028,8 +1029,8 @@ pub unsafe extern "C" fn fd_seek(
             };
             stream.input.set(None);
             stream.output.set(None);
-            file.position.set(from as u64);
-            *newoffset = from as u64;
+            file.position.set(from as wasi_filesystem::Filesize);
+            *newoffset = from as wasi_filesystem::Filesize;
             Ok(())
         } else {
             Err(ERRNO_SPIPE)
@@ -1089,7 +1090,8 @@ pub unsafe extern "C" fn fd_write(
 
             // If this is a file, keep the current-position pointer up to date.
             if let StreamType::File(file) = &streams.type_ {
-                file.position.set(file.position.get() + u64::from(bytes));
+                file.position
+                    .set(file.position.get() + wasi_filesystem::Filesize::from(bytes));
             }
 
             *nwritten = bytes as usize;
@@ -1981,7 +1983,7 @@ struct File {
     fd: wasi_filesystem::Descriptor,
 
     /// The current-position pointer.
-    position: Cell<u64>,
+    position: Cell<wasi_filesystem::Filesize>,
 }
 
 const PAGE_SIZE: usize = 65536;
