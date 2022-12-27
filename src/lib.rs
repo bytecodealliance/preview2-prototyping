@@ -4,11 +4,12 @@ use crate::bindings::{
     wasi_clocks, wasi_default_clocks, wasi_exit, wasi_filesystem, wasi_logging, wasi_poll,
     wasi_random, wasi_tcp,
 };
-use core::arch::wasm32::unreachable;
+use core::arch::wasm32::{self, unreachable};
 use core::cell::{Cell, RefCell, UnsafeCell};
+use core::cmp::min;
 use core::ffi::c_void;
-use core::mem::{self, forget, replace, size_of, ManuallyDrop, MaybeUninit};
-use core::ptr::{self, copy_nonoverlapping, null_mut};
+use core::mem::{align_of, forget, replace, size_of, ManuallyDrop, MaybeUninit};
+use core::ptr::{self, null_mut};
 use core::slice;
 use wasi::*;
 use wasi_poll::{WasiFuture, WasiStream};
@@ -799,7 +800,7 @@ pub unsafe extern "C" fn fd_readdir(
     cookie: Dircookie,
     bufused: *mut Size,
 ) -> Errno {
-    let mut buf = core::slice::from_raw_parts_mut(buf, buf_len);
+    let mut buf = slice::from_raw_parts_mut(buf, buf_len);
     return State::with(|state| {
         // First determine if there's an entry in the dirent cache to use. This
         // is done to optimize the use case where a large directory is being
@@ -869,7 +870,7 @@ pub unsafe extern "C" fn fd_readdir(
 
             // Copy a `dirent` describing this entry into the destination `buf`,
             // truncating it if it doesn't fit entirely.
-            let bytes = core::slice::from_raw_parts(
+            let bytes = slice::from_raw_parts(
                 (&dirent as *const wasi::Dirent).cast::<u8>(),
                 size_of::<Dirent>(),
             );
@@ -883,11 +884,7 @@ pub unsafe extern "C" fn fd_readdir(
             // Note that this might be a 0-byte copy if the `dirent` was
             // truncated or fit entirely into the destination.
             let name_bytes_to_copy = buf.len().min(name.len());
-            core::ptr::copy_nonoverlapping(
-                name.as_ptr().cast(),
-                buf.as_mut_ptr(),
-                name_bytes_to_copy,
-            );
+            ptr::copy_nonoverlapping(name.as_ptr().cast(), buf.as_mut_ptr(), name_bytes_to_copy);
 
             buf = &mut buf[name_bytes_to_copy..];
 
@@ -910,7 +907,7 @@ pub unsafe extern "C" fn fd_readdir(
                 state.dirent_cache.for_fd.set(fd);
                 state.dirent_cache.cookie.set(cookie - 1);
                 state.dirent_cache.cached_dirent.set(dirent);
-                std::ptr::copy(
+                ptr::copy(
                     name.as_ptr().cast::<u8>(),
                     (*state.dirent_cache.path_data.get()).as_mut_ptr() as *mut u8,
                     name.len(),
@@ -945,7 +942,7 @@ pub unsafe extern "C" fn fd_readdir(
                     let ptr = (*(*self.state.dirent_cache.path_data.get()).as_ptr())
                         .as_ptr()
                         .cast();
-                    let buffer = core::slice::from_raw_parts(ptr, dirent.d_namlen as usize);
+                    let buffer = slice::from_raw_parts(ptr, dirent.d_namlen as usize);
                     Ok((dirent, buffer))
                 });
             }
@@ -969,7 +966,7 @@ pub unsafe extern "C" fn fd_readdir(
             // this iterator since the data for the name lives within state.
             let name = unsafe {
                 assert_eq!(name.as_ptr(), self.state.path_buf.get().cast());
-                core::slice::from_raw_parts(name.as_ptr().cast(), name.len())
+                slice::from_raw_parts(name.as_ptr().cast(), name.len())
             };
             Some(Ok((dirent, name)))
         }
@@ -1316,8 +1313,8 @@ pub unsafe extern "C" fn path_readlink(
         if use_state_buf {
             // Preview1 follows POSIX in truncating the returned path if it
             // doesn't fit.
-            let len = core::cmp::min(path.len(), buf_len);
-            copy_nonoverlapping(path.as_ptr().cast(), buf, len);
+            let len = min(path.len(), buf_len);
+            ptr::copy_nonoverlapping(path.as_ptr().cast(), buf, len);
         }
 
         // The returned string's memory was allocated in `buf`, so don't separately
@@ -1456,13 +1453,13 @@ pub unsafe extern "C" fn poll_oneoff(
     // and the other to store the bool results.
     //
     // First, we assert that this is possible:
-    assert!(mem::align_of::<Event>() >= mem::align_of::<WasiFuture>());
-    assert!(mem::align_of::<WasiFuture>() >= mem::align_of::<u8>());
+    assert!(align_of::<Event>() >= align_of::<WasiFuture>());
+    assert!(align_of::<WasiFuture>() >= align_of::<u8>());
     assert!(
-        unwrap(nsubscriptions.checked_mul(mem::size_of::<Event>()))
+        unwrap(nsubscriptions.checked_mul(size_of::<Event>()))
             > unwrap(
-                unwrap(nsubscriptions.checked_mul(mem::size_of::<WasiFuture>()))
-                    .checked_add(unwrap(nsubscriptions.checked_mul(mem::size_of::<u8>())))
+                unwrap(nsubscriptions.checked_mul(size_of::<WasiFuture>()))
+                    .checked_add(unwrap(nsubscriptions.checked_mul(size_of::<u8>())))
             )
     );
 
@@ -1472,7 +1469,7 @@ pub unsafe extern "C" fn poll_oneoff(
     State::with(|state| {
         state.register_buffer(
             results,
-            unwrap(nsubscriptions.checked_mul(mem::size_of::<bool>())),
+            unwrap(nsubscriptions.checked_mul(size_of::<bool>())),
         );
 
         let mut futures = Futures {
@@ -1552,7 +1549,7 @@ pub unsafe extern "C" fn poll_oneoff(
 
         assert!(vec.len() == nsubscriptions);
         assert_eq!(vec.as_ptr(), results);
-        mem::forget(vec);
+        forget(vec);
 
         drop(futures);
 
@@ -2156,7 +2153,7 @@ impl State {
 
     #[cold]
     fn new() -> &'static RefCell<State> {
-        let grew = core::arch::wasm32::memory_grow(0, 1);
+        let grew = wasm32::memory_grow(0, 1);
         if grew == usize::MAX {
             unreachable();
         }
@@ -2222,7 +2219,7 @@ impl State {
 
     fn descriptors(&self) -> &[Descriptor] {
         unsafe {
-            core::slice::from_raw_parts(
+            slice::from_raw_parts(
                 self.descriptors.as_ptr().cast(),
                 unwrap_result(usize::try_from(self.ndescriptors)),
             )
@@ -2231,7 +2228,7 @@ impl State {
 
     fn descriptors_mut(&mut self) -> &mut [Descriptor] {
         unsafe {
-            core::slice::from_raw_parts_mut(
+            slice::from_raw_parts_mut(
                 self.descriptors.as_mut_ptr().cast(),
                 unwrap_result(usize::try_from(self.ndescriptors)),
             )
