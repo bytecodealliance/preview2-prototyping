@@ -186,13 +186,13 @@ pub enum Advice {
 }
 
 pub struct FileStream {
-    // Which file are we streaming?
+    /// Which file are we streaming?
     file: Box<dyn WasiFile>,
 
-    // Where in the file are we?
+    /// Where in the file are we?
     position: u64,
 
-    // Reading or writing?
+    /// Reading or writing?
     reading: bool,
 }
 
