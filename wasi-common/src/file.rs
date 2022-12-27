@@ -337,7 +337,7 @@ impl WasiStream for FileStream {
     */
 
     async fn skip(&mut self, nelem: u64) -> Result<(u64, bool), Error> {
-        // For a zero-length request, don't do the 1 byte check below.
+        // For a zero-length request, don't do the 1-byte check below.
         if nelem == 0 {
             return self.file.read_at(&mut [], 0).await;
         }
