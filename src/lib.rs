@@ -1426,7 +1426,7 @@ impl From<wasi_tcp::Error> for Errno {
         use wasi_tcp::Error::*;
 
         match error {
-            ConnectionAborted => black_box(ERRNO_CONNABORTED),
+            ConnectionAborted => obscure(ERRNO_CONNABORTED),
             ConnectionRefused => ERRNO_CONNREFUSED,
             ConnectionReset => ERRNO_CONNRESET,
             HostUnreachable => ERRNO_HOSTUNREACH,
@@ -1773,7 +1773,7 @@ impl From<wasi_filesystem::Errno> for Errno {
     #[inline(never)] // Disable inlining as this is bulky and relatively cold.
     fn from(err: wasi_filesystem::Errno) -> Errno {
         match err {
-            wasi_filesystem::Errno::Toobig => black_box(ERRNO_2BIG),
+            wasi_filesystem::Errno::Toobig => obscure(ERRNO_2BIG),
             wasi_filesystem::Errno::Access => ERRNO_ACCES,
             wasi_filesystem::Errno::Addrinuse => ERRNO_ADDRINUSE,
             wasi_filesystem::Errno::Addrnotavail => ERRNO_ADDRNOTAVAIL,
@@ -1866,7 +1866,7 @@ impl From<wasi_filesystem::DescriptorType> for wasi::Filetype {
 
 // A black box to prevent the optimizer from generating a lookup table
 // from the match above, which would require a static initializer.
-fn black_box(x: Errno) -> Errno {
+fn obscure(x: Errno) -> Errno {
     core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
     x
 }
