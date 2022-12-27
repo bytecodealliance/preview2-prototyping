@@ -1439,6 +1439,7 @@ dependencies = [
  "cap-std",
  "io-extras",
  "rustix",
+ "system-interface",
  "thiserror",
  "tracing",
  "windows-sys",
