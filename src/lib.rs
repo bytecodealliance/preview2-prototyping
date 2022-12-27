@@ -1240,7 +1240,7 @@ pub unsafe extern "C" fn path_open(
     let path = slice::from_raw_parts(path_ptr, path_len);
     let at_flags = at_flags_from_lookupflags(dirflags);
     let o_flags = o_flags_from_oflags(oflags);
-    let flags = flags_from_descriptor_flags(fs_rights_base, fdflags);
+    let flags = descriptor_flags_from_flags(fs_rights_base, fdflags);
     let mode = wasi_filesystem::Mode::READABLE | wasi_filesystem::Mode::WRITEABLE;
 
     State::with_mut(|state| {
@@ -1743,7 +1743,7 @@ fn o_flags_from_oflags(flags: Oflags) -> wasi_filesystem::OFlags {
     o_flags
 }
 
-fn flags_from_descriptor_flags(
+fn descriptor_flags_from_flags(
     rights: Rights,
     fdflags: Fdflags,
 ) -> wasi_filesystem::DescriptorFlags {
