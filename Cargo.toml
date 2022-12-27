@@ -25,6 +25,7 @@ async-trait = "0.1.59"
 io-lifetimes = { version = "1.0.0", default-features = false }
 wasi-common = { path = "wasi-common" }
 once_cell = "1.12.0"
+system-interface = { version = "0.25.1", features = ["cap_std_impls"] }
 
 [dependencies]
 wasi = { version = "0.11.0", default-features = false }
