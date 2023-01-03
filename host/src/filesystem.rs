@@ -5,10 +5,11 @@ use crate::{wasi_filesystem, HostResult, WasiCtx};
 use std::{
     io::{IoSlice, IoSliceMut},
     ops::BitAnd,
+    sync::Mutex,
     time::SystemTime,
 };
 use wasi_common::{
-    dir::TableDirExt,
+    dir::{ReaddirCursor, ReaddirIterator, TableDirExt},
     file::{FdFlags, FileStream, TableFileExt},
     WasiDir, WasiFile,
 };
@@ -330,21 +331,52 @@ impl wasi_filesystem::WasiFilesystem for WasiCtx {
         &mut self,
         fd: wasi_filesystem::Descriptor,
     ) -> HostResult<wasi_filesystem::DirEntryStream, wasi_filesystem::Errno> {
-        todo!()
+        let iterator = self
+            .table()
+            .get_dir(fd)
+            .map_err(convert)?
+            .readdir(ReaddirCursor::from(0))
+            .await
+            .map_err(convert)?;
+
+        self.table_mut()
+            .push(Box::new(Mutex::new(iterator)))
+            .map_err(convert)
     }
 
     async fn read_dir_entry(
         &mut self,
         stream: wasi_filesystem::DirEntryStream,
     ) -> HostResult<Option<wasi_filesystem::DirEntry>, wasi_filesystem::Errno> {
-        todo!()
+        let entity = self
+            .table()
+            .get::<Mutex<ReaddirIterator>>(stream)
+            .map_err(convert)?
+            .lock()
+            .unwrap()
+            .next()
+            .transpose()
+            .map_err(convert)?;
+
+        Ok(entity.map(|e| wasi_filesystem::DirEntry {
+            ino: Some(e.inode),
+            type_: e.filetype.into(),
+            name: e.name,
+        }))
     }
 
     async fn close_dir_entry_stream(
         &mut self,
-        fd: wasi_filesystem::DirEntryStream,
+        stream: wasi_filesystem::DirEntryStream,
     ) -> anyhow::Result<()> {
-        todo!()
+        // Verify we're deleting an entry of the expected type:
+        self.table()
+            .get::<Mutex<ReaddirIterator>>(stream)
+            .map_err(convert)?;
+
+        self.table_mut().delete(stream);
+
+        Ok(())
     }
 
     async fn sync(
