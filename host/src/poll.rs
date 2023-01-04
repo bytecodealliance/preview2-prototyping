@@ -6,11 +6,11 @@ use crate::{
 use wasi_common::clocks::TableMonotonicClockExt;
 use wasi_common::stream::TableStreamExt;
 
-fn convert(error: wasi_common::Error) -> wasmtime::component::Error<StreamError> {
+fn convert(error: wasi_common::Error) -> anyhow::Error {
     if let Some(_errno) = error.downcast_ref() {
-        wasmtime::component::Error::new(wasi_poll::StreamError {})
+        anyhow::Error::new(wasi_poll::StreamError {})
     } else {
-        error.into().into()
+        error.into()
     }
 }
 
@@ -92,7 +92,7 @@ impl WasiPoll for WasiCtx {
 
         buffer.truncate(bytes_read as usize);
 
-        Ok((buffer, end))
+        Ok(Ok((buffer, end)))
     }
 
     async fn write_stream(
@@ -105,7 +105,7 @@ impl WasiPoll for WasiCtx {
 
         let bytes_written: u64 = s.write(&bytes).await.map_err(convert)?;
 
-        Ok(Size::try_from(bytes_written).unwrap())
+        Ok(Ok(Size::try_from(bytes_written).unwrap()))
     }
 
     async fn skip_stream(
@@ -118,7 +118,7 @@ impl WasiPoll for WasiCtx {
 
         let (bytes_skipped, end) = s.skip(len).await.map_err(convert)?;
 
-        Ok((bytes_skipped, end))
+        Ok(Ok((bytes_skipped, end)))
     }
 
     async fn write_repeated_stream(
@@ -132,7 +132,7 @@ impl WasiPoll for WasiCtx {
 
         let bytes_written: u64 = s.write_repeated(byte, len).await.map_err(convert)?;
 
-        Ok(bytes_written)
+        Ok(Ok(bytes_written))
     }
 
     async fn splice_stream(
