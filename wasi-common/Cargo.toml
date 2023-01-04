@@ -27,12 +27,13 @@ cap-rand = { workspace = true }
 cap-fs-ext = { workspace = true }
 bitflags = { workspace = true }
 async-trait = { workspace = true }
+system-interface = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 rustix = { workspace = true, features = ["fs"] }
 
 [target.'cfg(windows)'.dependencies]
-io-extras = "0.17.0"
+io-extras = "0.17.1"
 
 [target.'cfg(windows)'.dependencies.windows-sys]
 workspace = true

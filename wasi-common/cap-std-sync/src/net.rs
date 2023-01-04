@@ -1,5 +1,6 @@
+use io_extras::borrowed::BorrowedWriteable;
 #[cfg(windows)]
-use io_extras::os::windows::{AsRawHandleOrSocket, RawHandleOrSocket};
+use io_extras::os::windows::{AsHandleOrSocket, BorrowedHandleOrSocket};
 use io_lifetimes::AsSocketlike;
 #[cfg(unix)]
 use io_lifetimes::{AsFd, BorrowedFd};
@@ -8,7 +9,6 @@ use io_lifetimes::{AsSocket, BorrowedSocket};
 use std::any::Any;
 use std::convert::TryInto;
 use std::io::{self, Read, Write};
-use system_interface::fs::GetSetFdFlags;
 use system_interface::io::IoExt;
 use system_interface::io::IsReadWrite;
 use system_interface::io::ReadReady;
@@ -113,11 +113,6 @@ macro_rules! wasi_listen_write_impl {
                 Ok(Box::new(stream))
             }
 
-            fn get_nonblocking(&mut self) -> Result<bool, Error> {
-                let s = self.0.as_socketlike().get_fd_flags()?;
-                Ok(s.contains(system_interface::fs::FdFlags::NONBLOCK))
-            }
-
             fn set_nonblocking(&mut self, flag: bool) -> Result<(), Error> {
                 self.0.set_nonblocking(flag)?;
                 Ok(())
@@ -133,10 +128,10 @@ macro_rules! wasi_listen_write_impl {
         }
 
         #[cfg(windows)]
-        impl AsRawHandleOrSocket for $ty {
+        impl AsHandleOrSocket for $ty {
             #[inline]
-            fn as_raw_handle_or_socket(&self) -> RawHandleOrSocket {
-                self.0.as_raw_handle_or_socket()
+            fn as_handle_or_socket(&self) -> BorrowedHandleOrSocket {
+                self.0.as_handle_or_socket()
             }
         }
 
@@ -234,11 +229,6 @@ macro_rules! wasi_stream_write_impl {
                 Ok(())
             }
 
-            fn get_nonblocking(&mut self) -> Result<bool, Error> {
-                let s = self.0.as_socketlike().get_fd_flags()?;
-                Ok(s.contains(system_interface::fs::FdFlags::NONBLOCK))
-            }
-
             fn set_nonblocking(&mut self, flag: bool) -> Result<(), Error> {
                 self.0.set_nonblocking(flag)?;
                 Ok(())
@@ -276,12 +266,12 @@ macro_rules! wasi_stream_write_impl {
             }
 
             #[cfg(windows)]
-            fn pollable_read(&self) -> Option<io_extras::os::windows::RawHandleOrSocket> {
-                Some(self.0.as_raw_handle_or_socket())
+            fn pollable_read(&self) -> Option<io_extras::os::windows::BorrowedHandleOrSocket> {
+                Some(self.0.as_handle_or_socket())
             }
             #[cfg(windows)]
-            fn pollable_write(&self) -> Option<io_extras::os::windows::RawHandleOrSocket> {
-                Some(self.0.as_raw_handle_or_socket())
+            fn pollable_write(&self) -> Option<io_extras::os::windows::BorrowedHandleOrSocket> {
+                Some(self.0.as_handle_or_socket())
             }
 
             async fn read(&mut self, buf: &mut [u8]) -> Result<(u64, bool), Error> {
@@ -324,10 +314,10 @@ macro_rules! wasi_stream_write_impl {
                 dst: &mut dyn WasiStream,
                 nelem: u64,
             ) -> Result<(u64, bool), Error> {
-                if let Some(handle) = dst.pollable_write() {
+                if let Some(writeable) = dst.pollable_write() {
                     let num = io::copy(
                         &mut io::Read::take(&self.0, nelem),
-                        &mut &*handle.as_socketlike_view::<$std_ty>(),
+                        &mut BorrowedWriteable::borrow(writeable),
                     )?;
                     Ok((num, num < nelem))
                 } else {
@@ -377,10 +367,10 @@ macro_rules! wasi_stream_write_impl {
         }
 
         #[cfg(windows)]
-        impl AsRawHandleOrSocket for TcpStream {
+        impl AsHandleOrSocket for TcpStream {
             #[inline]
-            fn as_raw_handle_or_socket(&self) -> RawHandleOrSocket {
-                self.0.as_raw_handle_or_socket()
+            fn as_handle_or_socket(&self) -> BorrowedHandleOrSocket {
+                self.0.as_handle_or_socket()
             }
         }
     };

@@ -14,7 +14,7 @@ pub trait WasiFile: Send + Sync {
     }
 
     #[cfg(windows)]
-    fn pollable(&self) -> Option<io_extras::os::windows::RawHandleOrSocket> {
+    fn pollable(&self) -> Option<io_extras::os::windows::BorrowedHandleOrSocket> {
         None
     }
 
@@ -259,7 +259,7 @@ impl WasiStream for FileStream {
     }
 
     #[cfg(windows)]
-    fn pollable_read(&self) -> Option<io_extras::os::windows::RawHandleOrSocket> {
+    fn pollable_read(&self) -> Option<io_extras::os::windows::BorrowedHandleOrSocket> {
         if self.reading {
             self.file.pollable()
         } else {
@@ -267,7 +267,7 @@ impl WasiStream for FileStream {
         }
     }
     #[cfg(windows)]
-    fn pollable_write(&self) -> Option<io_extras::os::windows::RawHandleOrSocket> {
+    fn pollable_write(&self) -> Option<io_extras::os::windows::BorrowedHandleOrSocket> {
         if self.reading {
             None
         } else {

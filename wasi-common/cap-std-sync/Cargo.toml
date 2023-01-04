@@ -20,17 +20,17 @@ cap-fs-ext = { workspace = true }
 cap-time-ext = "1.0.0"
 cap-rand = { workspace = true }
 fs-set-times = "0.18.0"
-system-interface = { version = "0.25.0", features = ["cap_std_impls"] }
+system-interface = { workspace = true }
 tracing = { workspace = true }
 io-lifetimes = { workspace = true }
 is-terminal = "0.4.0"
+io-extras = "0.17.1"
 
 [target.'cfg(unix)'.dependencies]
 rustix = { workspace = true, features = ["fs"] }
 
 [target.'cfg(windows)'.dependencies]
 once_cell = { workspace = true }
-io-extras = "0.17.0"
 rustix = { workspace = true, features = ["net"] }
 
 [target.'cfg(windows)'.dependencies.windows-sys]

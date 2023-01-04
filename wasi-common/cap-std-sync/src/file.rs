@@ -31,8 +31,8 @@ impl WasiFile for File {
     }
 
     #[cfg(windows)]
-    fn pollable(&self) -> Option<io_extras::os::windows::RawHandleOrSocket> {
-        Some(self.0.as_raw_handle_or_socket())
+    fn pollable(&self) -> Option<io_extras::os::windows::BorrowedHandleOrSocket> {
+        Some(self.0.as_handle_or_socket())
     }
 
     async fn try_clone(&mut self) -> Result<Box<dyn WasiFile>, Error> {
@@ -194,12 +194,12 @@ impl AsHandle for File {
 }
 
 #[cfg(windows)]
-use io_extras::os::windows::{AsRawHandleOrSocket, RawHandleOrSocket};
+use io_extras::os::windows::{AsHandleOrSocket, BorrowedHandleOrSocket};
 #[cfg(windows)]
-impl AsRawHandleOrSocket for File {
+impl AsHandleOrSocket for File {
     #[inline]
-    fn as_raw_handle_or_socket(&self) -> RawHandleOrSocket {
-        self.0.as_raw_handle_or_socket()
+    fn as_handle_or_socket(&self) -> BorrowedHandleOrSocket {
+        self.0.as_handle_or_socket()
     }
 }
 
@@ -272,8 +272,8 @@ pub fn get_fd_flags<Filelike: AsFilelike>(f: Filelike) -> io::Result<wasi_common
 /// Return the file-descriptor flags for a given file-like object.
 ///
 /// This returns the flags needed to implement [`WasiFile::get_fdflags`].
-pub fn is_read_write<Filelike: AsFilelike>(f: Filelike) -> io::Result<(bool, bool)> {
-    f.is_read_write()
+pub fn is_read_write<T: IsReadWrite>(t: &T) -> io::Result<(bool, bool)> {
+    t.is_read_write()
 }
 
 fn convert_advice(advice: Advice) -> system_interface::fs::Advice {
