@@ -369,12 +369,9 @@ impl wasi_filesystem::WasiFilesystem for WasiCtx {
         &mut self,
         stream: wasi_filesystem::DirEntryStream,
     ) -> anyhow::Result<()> {
-        // Verify we're deleting an entry of the expected type:
-        self.table()
-            .get::<Mutex<ReaddirIterator>>(stream)
+        self.table_mut()
+            .delete::<Mutex<ReaddirIterator>>(stream)
             .map_err(convert)?;
-
-        self.table_mut().delete(stream);
 
         Ok(())
     }
@@ -501,13 +498,11 @@ impl wasi_filesystem::WasiFilesystem for WasiCtx {
 
     async fn close(&mut self, fd: wasi_filesystem::Descriptor) -> anyhow::Result<()> {
         let table = self.table_mut();
-        if table.is::<Box<dyn WasiFile>>(fd) {
-            let _ = table.delete(fd);
-        } else if table.is::<Box<dyn WasiDir>>(fd) {
-            // TODO: `WasiCtx` no longer keeps track of which directories are preopens, so we currently have no way
-            // of preventing them from being closed.  Is that a problem?
-            let _ = table.delete(fd);
-        } else {
+        // TODO: `WasiCtx` no longer keeps track of which directories are preopens, so we currently have no way
+        // of preventing them from being closed.  Is that a problem?
+        if !(table.delete::<Box<dyn WasiFile>>(fd).is_ok()
+            || table.delete::<Box<dyn WasiDir>>(fd).is_ok())
+        {
             anyhow::bail!("{fd} is neither a file nor a directory");
         }
         Ok(())
