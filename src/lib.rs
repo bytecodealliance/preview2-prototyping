@@ -8,6 +8,7 @@ use core::arch::wasm32::{self, unreachable};
 use core::cell::{Cell, RefCell, UnsafeCell};
 use core::cmp::min;
 use core::ffi::c_void;
+use core::hint::black_box;
 use core::mem::{align_of, forget, replace, size_of, ManuallyDrop, MaybeUninit};
 use core::ptr::{self, null_mut};
 use core::slice;
@@ -1426,7 +1427,9 @@ impl From<wasi_tcp::Error> for Errno {
         use wasi_tcp::Error::*;
 
         match error {
-            ConnectionAborted => obscure(ERRNO_CONNABORTED),
+            // Use a black box to prevent the optimizer from generating a
+            // lookup table, which would require a static initializer.
+            ConnectionAborted => black_box(ERRNO_CONNABORTED),
             ConnectionRefused => ERRNO_CONNREFUSED,
             ConnectionReset => ERRNO_CONNRESET,
             HostUnreachable => ERRNO_HOSTUNREACH,
@@ -1773,7 +1776,9 @@ impl From<wasi_filesystem::Errno> for Errno {
     #[inline(never)] // Disable inlining as this is bulky and relatively cold.
     fn from(err: wasi_filesystem::Errno) -> Errno {
         match err {
-            wasi_filesystem::Errno::Toobig => obscure(ERRNO_2BIG),
+            // Use a black box to prevent the optimizer from generating a
+            // lookup table, which would require a static initializer.
+            wasi_filesystem::Errno::Toobig => black_box(ERRNO_2BIG),
             wasi_filesystem::Errno::Access => ERRNO_ACCES,
             wasi_filesystem::Errno::Addrinuse => ERRNO_ADDRINUSE,
             wasi_filesystem::Errno::Addrnotavail => ERRNO_ADDRNOTAVAIL,
@@ -1862,13 +1867,6 @@ impl From<wasi_filesystem::DescriptorType> for wasi::Filetype {
             wasi_filesystem::DescriptorType::Unknown => FILETYPE_UNKNOWN,
         }
     }
-}
-
-// A black box to prevent the optimizer from generating a lookup table
-// from the match above, which would require a static initializer.
-fn obscure(x: Errno) -> Errno {
-    core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
-    x
 }
 
 #[repr(C)]
