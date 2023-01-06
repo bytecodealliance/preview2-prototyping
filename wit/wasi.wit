@@ -331,7 +331,8 @@ interface wasi-filesystem {
       trunc,
   }
 
-  /// Permissions mode used by `open-at`, `change-permissions-at`, and similar.
+  /// Permissions mode used by `open-at`, `change-file-permissions-at`, and
+  /// similar.
   flags mode {
       /// True if the resource is considered readable by the containing
       /// filesystem.
