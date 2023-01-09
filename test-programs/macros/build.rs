@@ -11,7 +11,10 @@ fn main() {
 
     println!("cargo:rerun-if-changed=../../src");
     let mut cmd = Command::new("cargo");
-    cmd.arg("build")
+    // TODO: Remove +nightly once lambda-fairy/rust-errno#66 is released and
+    // rust-lang/rust#105395 reaches stable.
+    cmd.arg("+nightly")
+        .arg("build")
         .arg("--release")
         .current_dir("../../")
         .arg("--target=wasm32-unknown-unknown")
