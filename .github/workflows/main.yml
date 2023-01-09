@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - run: rustup update stable && rustup default stable
+    - run: rustup update stable nightly && rustup default stable
       # TODO: Remove +nightly once lambda-fairy/rust-errno#66 is released and
       # rust-lang/rust#105395 reaches stable.
     - run: rustup target add --toolchain=nightly wasm32-wasi wasm32-unknown-unknown
