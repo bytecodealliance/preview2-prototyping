@@ -1182,7 +1182,7 @@ name = "test-programs"
 version = "0.0.0"
 dependencies = [
  "getrandom",
- "wasi",
+ "rustix",
  "wit-bindgen-guest-rust",
 ]
 
