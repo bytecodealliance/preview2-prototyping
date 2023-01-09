@@ -1,86 +1,146 @@
 use rustix::io::{PollFd, PollFlags};
 use std::convert::TryInto;
-use wasi_common::sched::subscription::{RwEventFlags, Subscription};
+use wasi_common::sched::subscription::{RwEventFlags, RwSubscriptionKind};
 use wasi_common::{sched::Poll, Error, ErrorExt};
 
 pub async fn poll_oneoff<'a>(poll: &mut Poll<'a>) -> Result<(), Error> {
-    if poll.is_empty() {
-        return Ok(());
-    }
+    // Collect all stream I/O subscriptions. Clock subscriptions are handled
+    // separately below.
+    let mut ready = false;
     let mut pollfds = Vec::new();
-    for s in poll.rw_subscriptions() {
-        match s {
-            Subscription::Read(f) => {
-                let fd = f
-                    .stream
-                    .pollable_read()
-                    .ok_or(Error::invalid_argument().context("file is not pollable"))?;
-                pollfds.push(PollFd::from_borrowed_fd(fd, PollFlags::IN));
+    for (rwsub, kind) in poll.rw_subscriptions() {
+        match kind {
+            RwSubscriptionKind::Read => {
+                // Poll things that can be polled.
+                if let Some(fd) = rwsub.stream.pollable_read() {
+                    #[cfg(unix)]
+                    {
+                        pollfds.push(PollFd::from_borrowed_fd(fd, PollFlags::IN));
+                        continue;
+                    }
+
+                    #[cfg(windows)]
+                    {
+                        if let Some(fd) = fd.as_socket() {
+                            pollfds.push(PollFd::from_borrowed_fd(fd, PollFlags::IN));
+                            continue;
+                        }
+                    }
+                }
+
+                // Allow in-memory buffers or other immediately-available
+                // sources to complete successfully.
+                if let Ok(nbytes) = rwsub.stream.num_ready_bytes().await {
+                    if nbytes != 0 {
+                        rwsub.complete(nbytes, RwEventFlags::empty());
+                        ready = true;
+                        continue;
+                    }
+                }
+
+                return Err(Error::invalid_argument().context("stream is not pollable for reading"));
             }
 
-            Subscription::Write(f) => {
-                let fd = f
-                    .stream
-                    .pollable_write()
-                    .ok_or(Error::invalid_argument().context("file is not pollable"))?;
-                pollfds.push(PollFd::from_borrowed_fd(fd, PollFlags::OUT));
+            RwSubscriptionKind::Write => {
+                let fd = rwsub.stream.pollable_write().ok_or(
+                    Error::invalid_argument().context("stream is not pollable for writing"),
+                )?;
+
+                #[cfg(unix)]
+                {
+                    pollfds.push(PollFd::from_borrowed_fd(fd, PollFlags::OUT));
+                }
+
+                #[cfg(windows)]
+                {
+                    if let Some(fd) = fd.as_socket() {
+                        pollfds.push(PollFd::from_borrowed_fd(fd, PollFlags::OUT));
+                    } else {
+                        todo!("polling for writing to non-OS resources");
+                    }
+                }
             }
-            Subscription::MonotonicClock { .. } => unreachable!(),
         }
     }
 
-    let ready = loop {
-        let poll_timeout = if let Some(t) = poll.earliest_clock_deadline() {
-            let duration = t.duration_until().unwrap_or(0);
+    // If we didn't have any streams that are immediately available, do an OS
+    // `poll` to wait for streams to become available.
+    if !ready {
+        loop {
+            let poll_timeout = if let Some(t) = poll.earliest_clock_deadline() {
+                // Convert the timeout to milliseconds for `poll`, rounding up.
+                //
+                // TODO: On Linux and FreeBSD, we could use `ppoll` instead
+                // which takes a `timespec.`
+                ((t.deadline + 999) / 1000)
+                    .try_into()
+                    .map_err(|_| Error::overflow().context("poll timeout"))?
+            } else {
+                std::os::raw::c_int::max_value()
+            };
+            tracing::debug!(
+                poll_timeout = tracing::field::debug(poll_timeout),
+                poll_fds = tracing::field::debug(&pollfds),
+                "poll"
+            );
+            match rustix::io::poll(&mut pollfds, poll_timeout) {
+                Ok(_num_ready) => {
+                    ready = true;
+                    break;
+                }
+                Err(rustix::io::Errno::INTR) => continue,
+                Err(err) => return Err(std::io::Error::from(err).into()),
+            }
+        }
 
-            // Convert the timeout to milliseconds for `poll`, rounding up.
-            //
-            // TODO: On Linux and FreeBSD, we could use `ppoll` instead
-            // which takes a `timespec.`
-            ((duration + 999) / 1000)
-                .try_into()
-                .map_err(|_| Error::overflow().context("poll timeout"))?
-        } else {
-            std::os::raw::c_int::max_value()
-        };
-        tracing::debug!(
-            poll_timeout = tracing::field::debug(poll_timeout),
-            poll_fds = tracing::field::debug(&pollfds),
-            "poll"
+        assert_eq!(
+            poll.rw_subscriptions()
+                .filter(|(sub, _kind)| !sub.is_complete())
+                .count(),
+            pollfds.len()
         );
-        match rustix::io::poll(&mut pollfds, poll_timeout) {
-            Ok(ready) => break ready,
-            Err(rustix::io::Errno::INTR) => continue,
-            Err(err) => return Err(std::io::Error::from(err).into()),
+
+        // If the OS `poll` returned events, record them.
+        if ready {
+            // Iterate through the stream subscriptions, skipping those that
+            // were already completed due to being immediately available.
+            for ((rwsub, kind), pollfd) in poll
+                .rw_subscriptions()
+                .filter(|(sub, _kind)| !sub.is_complete())
+                .zip(pollfds.into_iter())
+            {
+                let revents = pollfd.revents();
+                let nbytes = match kind {
+                    RwSubscriptionKind::Read => {
+                        let ready = rwsub.stream.num_ready_bytes().await?;
+                        // If poll said it's ready, assume at least 1 byte is
+                        // ready, even if `num_ready_bytes` doesn't know.
+                        std::cmp::max(ready, 1)
+                    }
+                    RwSubscriptionKind::Write => 1,
+                };
+                if revents.contains(PollFlags::NVAL) {
+                    rwsub.error(Error::badf());
+                } else if revents.contains(PollFlags::ERR) {
+                    rwsub.error(Error::io());
+                } else if revents.contains(PollFlags::HUP) {
+                    rwsub.complete(nbytes, RwEventFlags::HANGUP);
+                } else {
+                    rwsub.complete(nbytes, RwEventFlags::empty());
+                };
+            }
         }
     };
-    if ready > 0 {
-        for (rwsub, pollfd) in poll.rw_subscriptions().zip(pollfds.into_iter()) {
-            let revents = pollfd.revents();
-            let (nbytes, rwsub) = match rwsub {
-                Subscription::Read(sub) => {
-                    let ready = sub.stream.num_ready_bytes().await?;
-                    (std::cmp::max(ready, 1), sub)
-                }
-                Subscription::Write(sub) => (0, sub),
-                _ => unreachable!(),
-            };
-            if revents.contains(PollFlags::NVAL) {
-                rwsub.error(Error::badf());
-            } else if revents.contains(PollFlags::ERR) {
-                rwsub.error(Error::io());
-            } else if revents.contains(PollFlags::HUP) {
-                rwsub.complete(nbytes, RwEventFlags::HANGUP);
-            } else {
-                rwsub.complete(nbytes, RwEventFlags::empty());
-            };
-        }
-    } else {
+
+    // If we had no immediately-available events and no events becoming
+    // available in a `poll`, it means we timed out. Report that event.
+    if !ready {
         poll.earliest_clock_deadline()
             .expect("timed out")
             .result()
             .expect("timer deadline is past")
             .unwrap()
     }
+
     Ok(())
 }

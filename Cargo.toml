@@ -15,9 +15,9 @@ edition = "2021"
 anyhow = "1.0.22"
 thiserror = "1.0.15"
 tracing = "0.1.26"
-cap-std = "1.0.2"
-cap-rand = "1.0.2"
-cap-fs-ext = "1.0.2"
+cap-std = "1.0.3"
+cap-rand = "1.0.3"
+cap-fs-ext = "1.0.3"
 bitflags = "1.2"
 windows-sys = "0.42.0"
 rustix = "0.36.0"
@@ -25,6 +25,7 @@ async-trait = "0.1.59"
 io-lifetimes = { version = "1.0.0", default-features = false }
 wasi-common = { path = "wasi-common" }
 once_cell = "1.12.0"
+system-interface = { version = "0.25.1", features = ["cap_std_impls"] }
 
 [dependencies]
 wasi = { version = "0.11.0", default-features = false }
