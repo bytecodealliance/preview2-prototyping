@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [workspace]
-members = ["verify", "host", "test-programs", "wasi-common"]
+members = ["verify", "host", "test-programs", "wasi-common", "preview2-to-preview1"]
 
 [workspace.package]
 version = "0.0.0"

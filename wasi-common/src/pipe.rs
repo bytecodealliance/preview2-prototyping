@@ -16,6 +16,8 @@ use std::sync::{Arc, RwLock};
 
 /// A virtual pipe read end.
 ///
+/// This reads from a source that implements the [`Read`] trait.
+///
 /// A variety of `From` impls are provided so that common pipe types are easy to create. For example:
 ///
 /// ```no_run
@@ -142,6 +144,8 @@ impl<R: Read + Any + Send + Sync> WasiStream for ReadPipe<R> {
 }
 
 /// A virtual pipe write end.
+///
+/// This writes to a destination that implements the [`Write`] trait.
 ///
 /// ```no_run
 /// use wasi_common::{pipe::WritePipe, WasiCtx, Table};

@@ -1,0 +1,19 @@
+[package]
+name = "wasi_snapshot_preview2"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+wasi = { version = "0.11.0", default-features = false }
+wit-bindgen-guest-rust = { git = "https://github.com/bytecodealliance/wit-bindgen", default-features = false, features = ["macros"] }
+once_cell = { workspace = true }
+
+[build-dependencies]
+wasm-encoder = "0.18.0"
+object = { version = "0.29.0", default-features = false, features = ["archive"] }
+
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+command = []
