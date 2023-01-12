@@ -1160,7 +1160,7 @@ interface wasi-tcp {
   bytes-writable: func(s: socket) -> result<bytes-result, error>
 }
 
-world wasi {
+world wasi-command {
   import wasi-clocks: wasi-clocks
   import wasi-default-clocks: wasi-default-clocks
   import wasi-logging: wasi-logging
