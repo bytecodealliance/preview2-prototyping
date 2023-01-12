@@ -1,7 +1,7 @@
 use anyhow::Result;
 use cap_rand::RngCore;
 use cap_std::{fs::Dir, time::Duration};
-use host::{add_to_linker, Wasi, WasiCtx};
+use host::{add_to_linker, WasiCommand, WasiCtx};
 use std::{
     io::{Cursor, Write},
     sync::Mutex,
@@ -18,7 +18,7 @@ use wasmtime::{
 
 test_programs_macros::tests!();
 
-async fn instantiate(path: &str) -> Result<(Store<WasiCtx>, Wasi)> {
+async fn instantiate(path: &str) -> Result<(Store<WasiCtx>, WasiCommand)> {
     println!("{}", path);
 
     let mut config = Config::new();
@@ -33,11 +33,11 @@ async fn instantiate(path: &str) -> Result<(Store<WasiCtx>, Wasi)> {
 
     let mut store = Store::new(&engine, WasiCtxBuilder::new().build());
 
-    let (wasi, _instance) = Wasi::instantiate_async(&mut store, &component, &linker).await?;
+    let (wasi, _instance) = WasiCommand::instantiate_async(&mut store, &component, &linker).await?;
     Ok((store, wasi))
 }
 
-async fn run_hello_stdout(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
+async fn run_hello_stdout(mut store: Store<WasiCtx>, wasi: WasiCommand) -> Result<()> {
     wasi.command(
         &mut store,
         0 as host::WasiStream,
@@ -50,7 +50,7 @@ async fn run_hello_stdout(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
     .map_err(|()| anyhow::anyhow!("command returned with failing exit status"))
 }
 
-async fn run_panic(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
+async fn run_panic(mut store: Store<WasiCtx>, wasi: WasiCommand) -> Result<()> {
     let r = wasi
         .command(
             &mut store,
@@ -75,7 +75,7 @@ async fn run_panic(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
     Ok(())
 }
 
-async fn run_args(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
+async fn run_args(mut store: Store<WasiCtx>, wasi: WasiCommand) -> Result<()> {
     wasi.command(
         &mut store,
         0 as host::WasiStream,
@@ -88,7 +88,7 @@ async fn run_args(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
     .map_err(|()| anyhow::anyhow!("command returned with failing exit status"))
 }
 
-async fn run_random(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
+async fn run_random(mut store: Store<WasiCtx>, wasi: WasiCommand) -> Result<()> {
     struct FakeRng;
 
     impl RngCore for FakeRng {
@@ -123,7 +123,7 @@ async fn run_random(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
     .map_err(|()| anyhow::anyhow!("command returned with failing exit status"))
 }
 
-async fn run_time(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
+async fn run_time(mut store: Store<WasiCtx>, wasi: WasiCommand) -> Result<()> {
     struct FakeWallClock;
 
     impl WasiWallClock for FakeWallClock {
@@ -180,7 +180,7 @@ async fn run_time(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
     .map_err(|()| anyhow::anyhow!("command returned with failing exit status"))
 }
 
-async fn run_stdin(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
+async fn run_stdin(mut store: Store<WasiCtx>, wasi: WasiCommand) -> Result<()> {
     store
         .data_mut()
         .set_stdin(Box::new(ReadPipe::new(Cursor::new(
@@ -199,7 +199,7 @@ async fn run_stdin(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
     .map_err(|()| anyhow::anyhow!("command returned with failing exit status"))
 }
 
-async fn run_env(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
+async fn run_env(mut store: Store<WasiCtx>, wasi: WasiCommand) -> Result<()> {
     wasi.command(
         &mut store,
         0 as host::Descriptor,
@@ -212,7 +212,7 @@ async fn run_env(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
     .map_err(|()| anyhow::anyhow!("command returned with failing exit status"))
 }
 
-async fn run_file_read(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
+async fn run_file_read(mut store: Store<WasiCtx>, wasi: WasiCommand) -> Result<()> {
     let dir = tempfile::tempdir()?;
 
     std::fs::File::create(dir.path().join("bar.txt"))?.write_all(b"And stood awhile in thought")?;
@@ -236,7 +236,7 @@ async fn run_file_read(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
     .map_err(|()| anyhow::anyhow!("command returned with failing exit status"))
 }
 
-async fn run_file_append(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
+async fn run_file_append(mut store: Store<WasiCtx>, wasi: WasiCommand) -> Result<()> {
     let dir = tempfile::tempdir()?;
 
     std::fs::File::create(dir.path().join("bar.txt"))?
@@ -271,7 +271,7 @@ async fn run_file_append(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
     Ok(())
 }
 
-async fn run_exit_success(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
+async fn run_exit_success(mut store: Store<WasiCtx>, wasi: WasiCommand) -> Result<()> {
     let r = wasi
         .command(
             &mut store,
@@ -288,7 +288,7 @@ async fn run_exit_success(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
     Ok(())
 }
 
-async fn run_exit_default(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
+async fn run_exit_default(mut store: Store<WasiCtx>, wasi: WasiCommand) -> Result<()> {
     let r = wasi
         .command(
             &mut store,
@@ -303,7 +303,7 @@ async fn run_exit_default(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
     Ok(())
 }
 
-async fn run_exit_failure(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
+async fn run_exit_failure(mut store: Store<WasiCtx>, wasi: WasiCommand) -> Result<()> {
     let r = wasi
         .command(
             &mut store,
@@ -320,7 +320,7 @@ async fn run_exit_failure(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
     Ok(())
 }
 
-async fn run_exit_panic(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
+async fn run_exit_panic(mut store: Store<WasiCtx>, wasi: WasiCommand) -> Result<()> {
     let r = wasi
         .command(
             &mut store,
@@ -337,7 +337,7 @@ async fn run_exit_panic(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
     Ok(())
 }
 
-async fn run_directory_list(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
+async fn run_directory_list(mut store: Store<WasiCtx>, wasi: WasiCommand) -> Result<()> {
     let dir = tempfile::tempdir()?;
 
     std::fs::File::create(dir.path().join("foo.txt"))?;
@@ -366,7 +366,7 @@ async fn run_directory_list(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()>
     .map_err(|()| anyhow::anyhow!("command returned with failing exit status"))
 }
 
-async fn run_default_clocks(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
+async fn run_default_clocks(mut store: Store<WasiCtx>, wasi: WasiCommand) -> Result<()> {
     wasi.command(
         &mut store,
         0 as host::Descriptor,
