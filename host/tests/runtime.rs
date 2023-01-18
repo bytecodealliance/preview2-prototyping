@@ -430,13 +430,12 @@ async fn run_default_clocks(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()>
 async fn run_with_temp_dir(mut store: Store<WasiCtx>, wasi: Wasi) -> Result<()> {
     let dir = tempfile::tempdir()?;
 
-    let tmp = std::fs::File::open(dir.path()).unwrap();
-
+    let open_dir = Dir::open_ambient_dir(dir.path(), ambient_authority())?;
     let descriptor =
         store
             .data_mut()
             .push_dir(Box::new(wasi_cap_std_sync::dir::Dir::from_cap_std(
-                Dir::from_std_file(tmp),
+                open_dir,
             )))?;
 
     wasi.command(
