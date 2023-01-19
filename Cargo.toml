@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [workspace]
-members = ["verify", "host", "test-programs", "test-programs/wasi-tests", "wasi-common"]
+members = ["verify", "host", "test-programs", "test-programs/wasi-tests", "wasi-common", "byte-array"]
 
 [workspace.package]
 version = "0.0.0"
@@ -30,6 +30,7 @@ system-interface = { version = "0.25.1", features = ["cap_std_impls"] }
 [dependencies]
 wasi = { version = "0.11.0", default-features = false }
 wit-bindgen-guest-rust = { git = "https://github.com/bytecodealliance/wit-bindgen", default-features = false, features = ["macros"] }
+byte-array = { path = "byte-array" }
 
 [build-dependencies]
 wasm-encoder = "0.18.0"
