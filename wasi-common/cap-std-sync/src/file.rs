@@ -43,9 +43,19 @@ impl WasiFile for File {
     }
 
     async fn datasync(&self) -> Result<(), Error> {
-        self.0.sync_data()?;
-        Ok(())
+        match self.0.sync_data() {
+            Ok(()) => Ok(()),
+
+            // On Windows, `sync_data` uses `FlushFileBuffers` which fails
+            // with `ERROR_ACCESS_DENIED` if the file is not open for
+            // writing. Ignore this error, for POSIX compatibility.
+            #[cfg(windows)]
+            Err(e) if e.raw_os_error() == Some(ERROR_ACCESS_DENIED as _) => Ok(()),
+
+            Err(e) => Err(e.into()),
+        }
     }
+
     async fn sync(&self) -> Result<(), Error> {
         match self.0.sync_all() {
             Ok(()) => Ok(()),
