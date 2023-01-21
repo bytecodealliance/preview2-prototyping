@@ -241,10 +241,11 @@ interface wasi-filesystem {
   /// Relative offset within a file.
   type filedelta = s64
 
-  /// Timestamp in nanoseconds.
-  ///
-  /// TODO: wasi-clocks is moving to seconds+nanoseconds.
-  type timestamp = u64
+  /// A time and date in seconds plus nanoseconds.
+  record datetime {
+      seconds: u64,
+      nanoseconds: u32,
+  }
 
   /// The type of a filesystem object referenced by a descriptor.
   ///
@@ -306,11 +307,11 @@ interface wasi-filesystem {
       /// in bytes of the pathname contained in the symbolic link.
       size: filesize,
       /// Last data access timestamp.
-      atim: timestamp,
+      atim: datetime,
       /// Last data modification timestamp.
-      mtim: timestamp,
+      mtim: datetime,
       /// Last file status change timestamp.
-      ctim: timestamp,
+      ctim: datetime,
   }
 
   /// Flags determining the method of how paths are resolved.
@@ -363,7 +364,7 @@ interface wasi-filesystem {
       /// with the filesystem.
       now,
       /// Set the timestamp to the given value.
-      timestamp(timestamp),
+      timestamp(datetime),
   }
 
   /// A directory entry.
