@@ -1,18 +1,3 @@
-interface command {
-  /// TODO: `use` the `wasi-poll` version
-  type wasi-stream = u32
-
-  /// TODO: `use` the `wasi-filesystem` version
-  type descriptor = u32
-
-  command: func(
-    stdin: wasi-stream,
-    stdout: wasi-stream,
-    args: list<string>,
-    env-vars: list<tuple<string, string>>,
-    preopens: list<tuple<descriptor, string>>
-  ) -> result
-}
 
 interface wasi-exit {
   /// Exit the curerent instance and any linked instances.
@@ -191,19 +176,6 @@ interface wasi-random {
   /// Deterministic environments must omit this function, rather than
   /// implementing it with deterministic data.
   get-random-u64: func() -> u64
-
-  /// A value containing 128 random bits.
-  ///
-  /// This is a value import, which means it only provides one value, rather
-  /// than being a function that could be called multiple times. This is intented
-  /// to be used by source languages to initialize hash-maps without needing the
-  /// full `getrandom` API.
-  ///
-  /// This value is not required to be computed from a CSPRNG, and may even be
-  /// entirely deterministic. Host implementatations are encouraged to provide
-  /// random values to any program exposed to attacker-controlled content, to
-  /// enable DoS protection built into many languages' hash-map implementations.
-  insecure-random: tuple<u64, u64>
 }
 
 /// # WASI Filesystem API
@@ -1160,16 +1132,22 @@ interface wasi-tcp {
   bytes-writable: func(s: socket) -> result<bytes-result, error>
 }
 
-world wasi-command {
-  import wasi-clocks: wasi-clocks
-  import wasi-default-clocks: wasi-default-clocks
-  import wasi-logging: wasi-logging
-  import wasi-stderr: wasi-stderr
-  import wasi-filesystem: wasi-filesystem
-  import wasi-random: wasi-random
-  import wasi-poll: wasi-poll
-  import wasi-tcp: wasi-tcp
-  import wasi-exit: wasi-exit
+default world wasi-command {
+  import wasi-clocks: self.wasi-clocks
+  import wasi-default-clocks: self.wasi-default-clocks
+  import wasi-logging: self.wasi-logging
+  import wasi-stderr: self.wasi-stderr
+  import wasi-filesystem: self.wasi-filesystem
+  import wasi-random: self.wasi-random
+  import wasi-poll: self.wasi-poll
+  import wasi-tcp: self.wasi-tcp
+  import wasi-exit: self.wasi-exit
 
-  default export command
+  export command: func(
+    stdin: u32, // TODO `use` from `wasi-poll`
+    stdout: u32, // TODO: `use` from `wasi-poll`
+    args: list<string>,
+    env-vars: list<tuple<string, string>>,
+    preopens: list<tuple<u32, string>> // TODO: `use` from `wasi-filesystem`
+  ) -> result
 }
