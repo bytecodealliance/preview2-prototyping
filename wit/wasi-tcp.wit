@@ -1,0 +1,34 @@
+default interface wasi-tcp {
+  use pkg.wasi-poll.{wasi-future}
+
+  /// A socket pseudo-handle. In the future, this will be replaced by a handle type.
+  type socket = u32
+
+  /// Errors which may be encountered when performing socket-related operations
+  // TODO: expand this list
+  enum error {
+      connection-aborted,
+      connection-refused,
+      connection-reset,
+      host-unreachable,
+      network-down,
+      network-unreachable,
+      timeout
+  }
+
+  /// Result of querying bytes readable or writable for a `socket`
+  record bytes-result {
+      /// Indicates the number of bytes readable or writable for a still-open socket
+      nbytes: u64,
+      /// Indicates whether the other end of the stream has disconnected, in which case
+      /// no further data will be received (when reading) or accepted (when writing) on
+      /// this stream.
+      is-closed: bool
+  }
+
+  /// Query the specified `socket` for how many bytes are available to read.
+  bytes-readable: func(s: socket) -> result<bytes-result, error>
+
+  /// Query the specified `socket` for the number of bytes ready to be accepted.
+  bytes-writable: func(s: socket) -> result<bytes-result, error>
+}

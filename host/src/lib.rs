@@ -12,7 +12,7 @@ type HostResult<T, E> = anyhow::Result<Result<T, E>>;
 
 wasmtime::component::bindgen!({
     path: "../wit",
-    world: "wasi",
+    world: "wasi-command",
     tracing: true,
     async: true,
 });
