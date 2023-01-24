@@ -510,10 +510,6 @@ async fn run_fd_filestat_get(store: Store<WasiCtx>, wasi: WasiCommand) -> Result
 }
 
 async fn run_fd_filestat_set(store: Store<WasiCtx>, wasi: WasiCommand) -> Result<()> {
-    if EXPECT_FAIL {
-        // TODO!
-        return Ok(());
-    }
     run_with_temp_dir(store, wasi).await
 }
 
@@ -641,10 +637,6 @@ async fn run_path_rename_dir_trailing_slashes(
     store: Store<WasiCtx>,
     wasi: WasiCommand,
 ) -> Result<()> {
-    if EXPECT_FAIL {
-        // TODO!
-        return Ok(());
-    }
     run_with_temp_dir(store, wasi).await
 }
 
@@ -731,10 +723,6 @@ async fn run_symlink_create(store: Store<WasiCtx>, wasi: WasiCommand) -> Result<
 }
 
 async fn run_symlink_filestat(store: Store<WasiCtx>, wasi: WasiCommand) -> Result<()> {
-    if EXPECT_FAIL {
-        // TODO!
-        return Ok(());
-    }
     run_with_temp_dir(store, wasi).await
 }
 
