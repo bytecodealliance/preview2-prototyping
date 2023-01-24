@@ -1496,6 +1496,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "wasm-encoder"
+version = "0.22.0"
+source = "git+https://github.com/alexcrichton/wasm-tools?branch=more-fuzz-bugs#746b18a4ac4c3226644d5b65f75b6bfbfeb6522c"
+dependencies = [
+ "leb128",
+]
+
+[[package]]
 name = "wasmparser"
 version = "0.92.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1525,13 +1533,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "wasmparser"
+version = "0.98.1"
+source = "git+https://github.com/alexcrichton/wasm-tools?branch=more-fuzz-bugs#746b18a4ac4c3226644d5b65f75b6bfbfeb6522c"
+dependencies = [
+ "indexmap",
+ "url",
+]
+
+[[package]]
 name = "wasmprinter"
 version = "0.2.48"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "322949f382cd5e4bad4330e144bf2124b3182846194ac01e2423c07a6a15ba85"
 dependencies = [
  "anyhow",
- "wasmparser 0.98.1",
+ "wasmparser 0.98.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -1765,7 +1782,7 @@ dependencies = [
  "leb128",
  "memchr",
  "unicode-width",
- "wasm-encoder 0.22.0",
+ "wasm-encoder 0.22.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -1931,23 +1948,22 @@ dependencies = [
 [[package]]
 name = "wit-component"
 version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f1781394df3f08797267cb455bac2b67cd13051d16279bd93e6c63d632c98e1"
+source = "git+https://github.com/alexcrichton/wasm-tools?branch=more-fuzz-bugs#746b18a4ac4c3226644d5b65f75b6bfbfeb6522c"
 dependencies = [
  "anyhow",
  "bitflags",
  "indexmap",
  "log",
  "url",
- "wasm-encoder 0.22.0",
- "wasmparser 0.98.1",
+ "wasm-encoder 0.22.0 (git+https://github.com/alexcrichton/wasm-tools?branch=more-fuzz-bugs)",
+ "wasmparser 0.98.1 (git+https://github.com/alexcrichton/wasm-tools?branch=more-fuzz-bugs)",
  "wit-parser",
 ]
 
 [[package]]
 name = "wit-parser"
-version = "0.4.1"
-source = "git+https://github.com/alexcrichton/wasm-tools?branch=fix-wit-parser#e485af4d1f0fd59c260ef0118de1c8ae6baa7967"
+version = "0.4.0"
+source = "git+https://github.com/alexcrichton/wasm-tools?branch=more-fuzz-bugs#746b18a4ac4c3226644d5b65f75b6bfbfeb6522c"
 dependencies = [
  "anyhow",
  "id-arena",
