@@ -1,0 +1,19 @@
+default world wasi-command {
+  import wasi-clocks: pkg.wasi-clocks
+  import wasi-default-clocks: pkg.wasi-clocks.wasi-default-clocks
+  import wasi-logging: pkg.wasi-logging
+  import wasi-stderr: pkg.wasi-stderr
+  import wasi-filesystem: pkg.wasi-filesystem
+  import wasi-random: pkg.wasi-random
+  import wasi-poll: pkg.wasi-poll
+  import wasi-tcp: pkg.wasi-tcp
+  import wasi-exit: pkg.wasi-exit
+
+  export command: func(
+    stdin: u32, // TODO `use` from `wasi-poll`
+    stdout: u32, // TODO: `use` from `wasi-poll`
+    args: list<string>,
+    env-vars: list<tuple<string, string>>,
+    preopens: list<tuple<u32, string>> // TODO: `use` from `wasi-filesystem`
+  ) -> result
+}

@@ -71,25 +71,25 @@ jobs:
         path: wasi_snapshot_preview1.command.wasm
     - run: cargo build --target wasm32-unknown-unknown --release
 
-    - run: cargo install --git https://github.com/bytecodealliance/wit-bindgen --rev d24b97fcb1378cd8f61efbfd956ca8dcb57d2db0 wit-bindgen-cli
-    - run: wit-bindgen guest c wit/wasi.wit
+    - run: cargo install --git https://github.com/bytecodealliance/wit-bindgen --rev 808d3119804bad5a50bca260d325fa51dc1ef885 wit-bindgen-cli
+    - run: wit-bindgen guest c ./wit --world wasi-command
     - uses: actions/upload-artifact@v3
       with:
-        name: wasi.c
-        path: wasi.c
+        name: wasi_command.c
+        path: wasi_command.c
     - uses: actions/upload-artifact@v3
       with:
-        name: wasi.h
-        path: wasi.h
+        name: wasi_command.h
+        path: wasi_command.h
     - uses: actions/upload-artifact@v3
       with:
-        name: wasi_component_type.o
-        path: wasi_component_type.o
-    - run: wit-bindgen guest rust wit/wasi.wit
+        name: wasi_command_component_type.o
+        path: wasi_command_component_type.o
+    - run: wit-bindgen guest rust ./wit --world wasi-command
     - uses: actions/upload-artifact@v3
       with:
-        name: wasi.rs
-        path: wasi.rs
+        name: wasi-command.rs
+        path: wasi-command.rs
 
     - uses: actions/upload-artifact@v3
       with:
@@ -106,7 +106,7 @@ jobs:
         files: |
           target/wasm32-unknown-unknown/release/wasi_snapshot_preview1.wasm
           wasi_snapshot_preview1.command.wasm
-          wasi.c
-          wasi.h
-          wasi_component_type.o
-          wasi.rs
+          wasi_command.c
+          wasi_command.h
+          wasi_command_component_type.o
+          wasi-command.rs
