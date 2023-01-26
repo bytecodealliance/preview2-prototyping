@@ -1,5 +1,5 @@
 default interface wasi-tcp {
-  use pkg.wasi-poll.{wasi-future}
+  use pkg.wasi-poll.{waitable}
 
   /// A socket pseudo-handle. In the future, this will be replaced by a handle type.
   type socket = u32

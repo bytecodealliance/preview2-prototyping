@@ -5,29 +5,31 @@
 default interface wasi-poll {
   use pkg.wasi-clocks.{wall-clock, monotonic-clock, datetime, instant}
 
-  /// A "pseudo-future".
+  /// A "waitable" handle.
   ///
-  /// This conceptually represents a `future<_>`, and serves as temporary
-  /// scaffolding until component-model's async features are ready.
+  /// This is conceptually represents a `stream<_, _>`, or in other words,
+  /// a stream that one can wait on, repeatedly, but which does not itself
+  /// produce any data. It's temporary scaffolding until component-model's
+  /// async features are ready.
   ///
-  /// In the shorter term, it is a `u32` which will be replaced by a handle
-  /// when the component-model handles and resource features are ready.
+  /// And at present, it is a `u32` instead of being an actual handle, until
+  /// the wit-bindgen implementation of handles and resources is ready.
   ///
-  /// Pseudo-future lifetimes are not automatically managed. Users must
-  /// ensure that they do not outlive the resource they reference.
-  type wasi-future = u32
+  /// Waitable lifetimes are not automatically managed. Users must ensure
+  /// that they do not outlive the resource they reference.
+  type waitable = u32
 
-  /// A "pseudo-stream".
+  /// A "bytestream" handle.
   ///
-  /// This conceptually represents a `stream<u8, _>`, and serves as temporary
+  /// This conceptually represents a `stream<u8, _>`. It's temporary
   /// scaffolding until component-model's async features are ready.
   ///
-  /// In the shorter term, it is a `u32` which will be replaced by a handle
-  /// when the component-model handles and resource features are ready.
+  /// And at present, it is a `u32` instead of being an actual handle, until
+  /// the wit-bindgen implementation of handles and resources is ready.
   type wasi-stream = u32
 
-  /// Dispose of the specified future, after which it may no longer be used.
-  drop-future: func(f: wasi-future)
+  /// Dispose of the specified `waitable`, after which it may no longer be used.
+  drop-waitable: func(f: waitable)
 
   /// Dispose of the specified stream, after which it may no longer be used.
   drop-stream: func(f: wasi-stream)
@@ -83,18 +85,18 @@ default interface wasi-poll {
       len: u64,
   ) -> result<tuple<u64, bool>, stream-error>
 
-  /// Create a future which will resolve once either the specified stream has bytes
+  /// Create a `waitable` which will resolve once either the specified stream has bytes
   /// available to read or the other end of the stream has been closed.
-  subscribe-read: func(s: wasi-stream) -> wasi-future
+  subscribe-read: func(s: wasi-stream) -> waitable
 
-  /// Create a future which will resolve once either the specified stream is ready
+  /// Create a `waitable` which will resolve once either the specified stream is ready
   /// to accept bytes or the other end of the stream has been closed.
-  subscribe-write: func(s: wasi-stream) -> wasi-future
+  subscribe-write: func(s: wasi-stream) -> waitable
 
-  /// Create a future which will resolve once the specified time has been reached.
-  subscribe-monotonic-clock: func(clock: monotonic-clock, when: instant, absolute: bool) -> wasi-future
+  /// Create a `waitable` which will resolve once the specified time has been reached.
+  subscribe-monotonic-clock: func(clock: monotonic-clock, when: instant, absolute: bool) -> waitable
 
-  /// Poll for completion on a set of futures.
+  /// Poll for completion on a set of waitables.
   ///
   /// The "oneoff" in the name refers to the fact that this function must do a
   /// linear scan through the entire list of subscriptions, which may be
@@ -108,5 +110,5 @@ default interface wasi-poll {
   /// See https://github.com/bytecodealliance/preview2-prototyping/pull/11#issuecomment-1329873061
   /// for details.  For now, we use zero to mean "not ready" and non-zero to
   /// mean "ready".
-  poll-oneoff: func(in: list<wasi-future>) -> list<u8>
+  poll-oneoff: func(in: list<waitable>) -> list<u8>
 }
