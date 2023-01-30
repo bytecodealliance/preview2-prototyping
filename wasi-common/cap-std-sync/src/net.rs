@@ -271,7 +271,7 @@ macro_rules! wasi_stream_write_impl {
             }
 
             async fn readable(&self) -> Result<(), Error> {
-                if is_read_write(&self.0)?.0 {
+                if is_read_write(&*self.0)?.0 {
                     Ok(())
                 } else {
                     Err(Error::badf())
@@ -279,7 +279,7 @@ macro_rules! wasi_stream_write_impl {
             }
 
             async fn writable(&self) -> Result<(), Error> {
-                if is_read_write(&self.0)?.1 {
+                if is_read_write(&*self.0)?.1 {
                     Ok(())
                 } else {
                     Err(Error::badf())
@@ -380,7 +380,7 @@ macro_rules! wasi_stream_write_impl {
                 }
             }
             async fn writable(&self) -> Result<(), Error> {
-                if is_read_write(&self.0)?.1 {
+                if is_read_write(&*self.0)?.1 {
                     Ok(())
                 } else {
                     Err(Error::badf())
