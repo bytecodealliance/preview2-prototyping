@@ -30,10 +30,10 @@ default interface wasi-clocks {
       nanoseconds: u32,
   }
 
-  /// An asynchronous operation. See the comments on `waitable` in the
+  /// An asynchronous operation. See the comments on `pollable` in the
   /// `wasi-poll` interface for details.
   /// TODO: `use` the `wasi-poll` version
-  type waitable = u32
+  type pollable = u32
 
   /// Read the current value of the clock.
   ///
