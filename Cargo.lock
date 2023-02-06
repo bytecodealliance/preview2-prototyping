@@ -1194,7 +1194,7 @@ name = "test-programs-macros"
 version = "0.0.0"
 dependencies = [
  "quote",
- "wit-component 0.5.1",
+ "wit-component",
 ]
 
 [[package]]
@@ -1883,28 +1883,28 @@ dependencies = [
 [[package]]
 name = "wit-bindgen-core"
 version = "0.3.0"
-source = "git+https://github.com/bytecodealliance/wit-bindgen#c482614fdedeaff78d8e95daa01bc6ab11e32073"
+source = "git+https://github.com/bytecodealliance/wit-bindgen#67c7d748cf561ee32e7f52e2d796501e875e4c50"
 dependencies = [
  "anyhow",
- "wit-component 0.4.3",
- "wit-parser 0.4.1",
+ "wit-component",
+ "wit-parser 0.5.0",
 ]
 
 [[package]]
 name = "wit-bindgen-gen-guest-rust"
 version = "0.3.0"
-source = "git+https://github.com/bytecodealliance/wit-bindgen#c482614fdedeaff78d8e95daa01bc6ab11e32073"
+source = "git+https://github.com/bytecodealliance/wit-bindgen#67c7d748cf561ee32e7f52e2d796501e875e4c50"
 dependencies = [
  "heck",
  "wit-bindgen-core",
  "wit-bindgen-gen-rust-lib",
- "wit-component 0.4.3",
+ "wit-component",
 ]
 
 [[package]]
 name = "wit-bindgen-gen-rust-lib"
 version = "0.3.0"
-source = "git+https://github.com/bytecodealliance/wit-bindgen#c482614fdedeaff78d8e95daa01bc6ab11e32073"
+source = "git+https://github.com/bytecodealliance/wit-bindgen#67c7d748cf561ee32e7f52e2d796501e875e4c50"
 dependencies = [
  "heck",
  "wit-bindgen-core",
@@ -1913,7 +1913,7 @@ dependencies = [
 [[package]]
 name = "wit-bindgen-guest-rust"
 version = "0.3.0"
-source = "git+https://github.com/bytecodealliance/wit-bindgen#c482614fdedeaff78d8e95daa01bc6ab11e32073"
+source = "git+https://github.com/bytecodealliance/wit-bindgen#67c7d748cf561ee32e7f52e2d796501e875e4c50"
 dependencies = [
  "bitflags",
  "wit-bindgen-guest-rust-macro",
@@ -1922,30 +1922,14 @@ dependencies = [
 [[package]]
 name = "wit-bindgen-guest-rust-macro"
 version = "0.3.0"
-source = "git+https://github.com/bytecodealliance/wit-bindgen#c482614fdedeaff78d8e95daa01bc6ab11e32073"
+source = "git+https://github.com/bytecodealliance/wit-bindgen#67c7d748cf561ee32e7f52e2d796501e875e4c50"
 dependencies = [
  "anyhow",
  "proc-macro2",
  "syn",
  "wit-bindgen-core",
  "wit-bindgen-gen-guest-rust",
- "wit-component 0.4.3",
-]
-
-[[package]]
-name = "wit-component"
-version = "0.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03db9831d4147baa1bae36410ec29c27caed0e0b5a592d5adad54698681b952b"
-dependencies = [
- "anyhow",
- "bitflags",
- "indexmap",
- "log",
- "url",
- "wasm-encoder 0.22.1",
- "wasmparser 0.99.0",
- "wit-parser 0.4.1",
+ "wit-component",
 ]
 
 [[package]]
