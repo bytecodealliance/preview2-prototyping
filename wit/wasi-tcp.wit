@@ -7,7 +7,8 @@
 ///
 /// Non-blocking connections should be supported by calling connect() with the nonblock flag. Then you poll on the resulting connection for output. Once poll returns, you can call `is-connected` to determine the connection status and receive(connection, 1) to collect the error status. This follows the existing usage under POSIX.
 default interface wasi-tcp {
-  use pkg.wasi-poll.{pollable, wasi-stream}
+  use pkg.wasi-poll.{pollable}
+  use pkg.wasi-io.{input-stream, output-stream}
   use pkg.wasi-net.{network}
 
   // TODO: Use ip-socket-address from wasi-ip.
@@ -165,11 +166,14 @@ default interface wasi-tcp {
   /// indication to poll for incoming data on the listener. Otherwise, this
   /// function will block until an incoming connection is available.
   ///
+  /// Returns a tuple of a connection handle, and input stream, and an output
+  /// stream for the socket.
+  ///
   /// The connection should be destroyed with `close-connection` when no longer in use.
   accept: func(
       listener: listener,
       %flags: connection-flags
-  ) -> result<tuple<connection, wasi-stream>, errno>
+  ) -> result<tuple<connection, input-stream, output-stream>, errno>
 
   /// Accepts a new incoming connection on a TCP socket.
   ///
@@ -178,7 +182,7 @@ default interface wasi-tcp {
   accept-tcp: func(
       listener: tcp-listener,
       %flags: connection-flags
-  ) -> result<tuple<connection, wasi-stream, ip-socket-address>, errno>
+  ) -> result<tuple<connection, input-stream, output-stream, ip-socket-address>, errno>
 
   /// Connect to a remote endpoint.
   ///
@@ -200,7 +204,7 @@ default interface wasi-tcp {
       local-address: ip-socket-address,
       remote-address: ip-socket-address,
       %flags: connection-flags,
-  ) -> result<tuple<connection, wasi-stream>, errno>
+  ) -> result<tuple<connection, input-stream, output-stream>, errno>
 
   /// Send bytes to the remote connection.
   ///

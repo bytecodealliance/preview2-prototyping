@@ -14,7 +14,7 @@
 /// Some of the content and ideas here are derived from
 /// [CloudABI](https://github.com/NuxiNL/cloudabi).
 default interface wasi-filesystem {
-  use pkg.wasi-poll.{wasi-stream}
+  use pkg.wasi-io.{input-stream, output-stream}
   use pkg.wasi-clocks.{datetime}
 
   /// A "file" descriptor. In the future, this will be replaced by handle types.
@@ -361,7 +361,7 @@ default interface wasi-filesystem {
       fd: descriptor,
       /// The offset within the file at which to start reading.
       offset: filesize,
-  ) -> result<wasi-stream, errno>
+  ) -> result<input-stream, errno>
 
   /// Return a stream for writing to a file.
   ///
@@ -371,7 +371,7 @@ default interface wasi-filesystem {
       fd: descriptor,
       /// The offset within the file at which to start writing.
       offset: filesize,
-  ) -> result<wasi-stream, errno>
+  ) -> result<output-stream, errno>
 
   /// Return a stream for appending to a file.
   ///
@@ -380,7 +380,7 @@ default interface wasi-filesystem {
   append-via-stream: func(
       /// The resource to operate on.
       fd: descriptor,
-  ) -> result<wasi-stream, errno>
+  ) -> result<output-stream, errno>
 
   /// Read from a file at a given offset.
   ///
