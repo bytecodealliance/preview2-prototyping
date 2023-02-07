@@ -299,7 +299,8 @@ impl wasi_filesystem::WasiFilesystem for WasiCtx {
         fd: wasi_filesystem::Descriptor,
         flags: wasi_filesystem::DescriptorFlags,
     ) -> HostResult<(), wasi_filesystem::Errno> {
-        todo!()
+        // FIXME
+        Err(wasi_filesystem::Errno::Notsup.into())
     }
 
     async fn set_size(
