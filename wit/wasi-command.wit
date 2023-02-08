@@ -11,12 +11,11 @@ default world wasi-command {
   import wasi-ip: pkg.wasi-ip
   import wasi-dns: pkg.wasi-dns
   import wasi-exit: pkg.wasi-exit
+  import wasi-environment: pkg.wasi-environment
 
   export command: func(
     stdin: u32, // TODO `use` from `wasi-io`
     stdout: u32, // TODO: `use` from `wasi-io`
     args: list<string>,
-    env-vars: list<tuple<string, string>>,
-    preopens: list<tuple<u32, string>> // TODO: `use` from `wasi-filesystem`
   ) -> result
 }

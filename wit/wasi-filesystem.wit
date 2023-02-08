@@ -267,6 +267,17 @@ default interface wasi-filesystem {
       no-reuse,
   }
 
+  /// Get preopened file descriptors.
+  ///
+  /// Provided by the environment as a pair of a path name and a descriptor
+  /// of a directory.
+  ///
+  /// Morally, these are a value import, but until value imports are available
+  /// in the component model, this import function should be called at most
+  /// once, and subsequent calls should trap.
+  get-preopens: func() -> list<tuple<descriptor, string>>
+
+
   /// Provide file advisory information on a descriptor.
   ///
   /// This is similar to `posix_fadvise` in POSIX.
