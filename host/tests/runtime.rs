@@ -640,3 +640,16 @@ async fn run_truncation_rights(store: Store<WasiCtx>, wasi: WasiCommand) -> Resu
 async fn run_unlink_file_trailing_slashes(store: Store<WasiCtx>, wasi: WasiCommand) -> Result<()> {
     expect_fail(run_with_temp_dir(store, wasi).await)
 }
+
+async fn run_export_cabi_realloc(mut store: Store<WasiCtx>, wasi: WasiCommand) -> Result<()> {
+    wasi.command(
+        &mut store,
+        0 as InputStream,
+        1 as OutputStream,
+        &[],
+        &[],
+        &[],
+    )
+    .await?
+    .map_err(|()| anyhow::anyhow!("command returned with failing exit status"))
+}
