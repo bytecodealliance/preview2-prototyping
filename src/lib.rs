@@ -1,8 +1,8 @@
 #![allow(unused_variables)] // TODO: remove this when more things are implemented
 
 use crate::bindings::{
-    wasi_clocks, wasi_default_clocks, wasi_exit, wasi_filesystem, wasi_io, wasi_poll, wasi_random,
-    wasi_stderr, wasi_tcp,
+    wasi_clocks, wasi_default_clocks, wasi_environment, wasi_exit, wasi_filesystem, wasi_io,
+    wasi_poll, wasi_random, wasi_stderr, wasi_tcp,
 };
 use core::arch::wasm32;
 use core::cell::{Cell, RefCell, UnsafeCell};
@@ -46,8 +46,6 @@ pub unsafe extern "C" fn command(
     stdout: OutputStream,
     args_ptr: *const WasmStr,
     args_len: usize,
-    env_vars: StrTupleList,
-    preopens: PreopenList,
 ) -> u32 {
     State::with_mut(|state| {
         // Initialization of `State` automatically fills in some dummy
@@ -70,9 +68,8 @@ pub unsafe extern "C" fn command(
             });
         }
         state.args = Some(slice::from_raw_parts(args_ptr, args_len));
-        state.env_vars = Some(slice::from_raw_parts(env_vars.base, env_vars.len));
 
-        let preopens = slice::from_raw_parts(preopens.base, preopens.len);
+        /*
         state.preopens = Some(preopens);
 
         for preopen in preopens {
@@ -86,6 +83,7 @@ pub unsafe extern "C" fn command(
                 }),
             })));
         }
+        */
 
         Ok(())
     });
@@ -232,25 +230,26 @@ pub unsafe extern "C" fn args_sizes_get(argc: *mut Size, argv_buf_size: *mut Siz
 #[no_mangle]
 pub unsafe extern "C" fn environ_get(environ: *mut *mut u8, environ_buf: *mut u8) -> Errno {
     State::with(|state| {
-        if let Some(list) = state.env_vars {
-            let mut offsets = environ;
-            let mut buffer = environ_buf;
-            for pair in list {
-                ptr::write(offsets, buffer);
-                offsets = offsets.add(1);
+        if state.env_vars.is_none() {
+            state.env_vars = Some(wasi_environment::get_environment());
+        }
+        let mut offsets = environ;
+        let mut buffer = environ_buf;
+        for (key, value) in state.env_vars.as_ref().expect("initialized above") {
+            ptr::write(offsets, buffer);
+            offsets = offsets.add(1);
 
-                ptr::copy_nonoverlapping(pair.key.ptr, buffer, pair.key.len);
-                buffer = buffer.add(pair.key.len);
+            ptr::copy_nonoverlapping(key.as_ptr(), buffer, key.len());
+            buffer = buffer.add(key.len());
 
-                ptr::write(buffer, b'=');
-                buffer = buffer.add(1);
+            ptr::write(buffer, b'=');
+            buffer = buffer.add(1);
 
-                ptr::copy_nonoverlapping(pair.value.ptr, buffer, pair.value.len);
-                buffer = buffer.add(pair.value.len);
+            ptr::copy_nonoverlapping(value.as_ptr(), buffer, value.len());
+            buffer = buffer.add(value.len());
 
-                ptr::write(buffer, 0);
-                buffer = buffer.add(1);
-            }
+            ptr::write(buffer, 0);
+            buffer = buffer.add(1);
         }
 
         Ok(())
@@ -264,19 +263,18 @@ pub unsafe extern "C" fn environ_sizes_get(
     environ_buf_size: *mut Size,
 ) -> Errno {
     State::with(|state| {
-        if let Some(list) = state.env_vars {
-            *environc = list.len();
-            *environ_buf_size = {
-                let mut sum = 0;
-                for pair in list {
-                    sum += pair.key.len + pair.value.len + 2;
-                }
-                sum
-            };
-        } else {
-            *environc = 0;
-            *environ_buf_size = 0;
+        if state.env_vars.is_none() {
+            state.env_vars = Some(wasi_environment::get_environment());
         }
+        let vars = state.env_vars.as_ref().expect("initialized above");
+        *environc = vars.len();
+        *environ_buf_size = {
+            let mut sum = 0;
+            for (key, value) in vars {
+                sum += key.len() + value.len() + 2;
+            }
+            sum
+        };
 
         Ok(())
     })
@@ -654,20 +652,27 @@ pub unsafe extern "C" fn fd_pread(
     })
 }
 
-fn get_preopen(state: &State, fd: Fd) -> Option<&Preopen> {
-    state.preopens?.get(fd.checked_sub(3)? as usize)
+fn get_preopen(state: &mut State, fd: Fd) -> Option<&(u32, Vec<u8>)> {
+    if state.preopens.is_none() {
+        state.preopens = Some(wasi_filesystem::get_preopens());
+    }
+    state
+        .preopens
+        .as_ref()
+        .expect("initialized above")
+        .get(fd.checked_sub(3)? as usize)
 }
 
 /// Return a description of the given preopened file descriptor.
 #[no_mangle]
 pub unsafe extern "C" fn fd_prestat_get(fd: Fd, buf: *mut Prestat) -> Errno {
     State::with(|state| {
-        if let Some(preopen) = get_preopen(state, fd) {
+        if let Some((_preopen, path)) = get_preopen(&mut state, fd) {
             buf.write(Prestat {
                 tag: 0,
                 u: PrestatU {
                     dir: PrestatDir {
-                        pr_name_len: preopen.path.len,
+                        pr_name_len: path.len(),
                     },
                 },
             });
@@ -683,11 +688,11 @@ pub unsafe extern "C" fn fd_prestat_get(fd: Fd, buf: *mut Prestat) -> Errno {
 #[no_mangle]
 pub unsafe extern "C" fn fd_prestat_dir_name(fd: Fd, path: *mut u8, path_len: Size) -> Errno {
     State::with(|state| {
-        if let Some(preopen) = get_preopen(state, fd) {
-            if preopen.path.len < path_len as usize {
+        if let Some((_preopen, preopen_path)) = get_preopen(&mut state, fd) {
+            if preopen_path.len() < path_len as usize {
                 Err(ERRNO_NAMETOOLONG)
             } else {
-                ptr::copy_nonoverlapping(preopen.path.ptr, path, preopen.path.len);
+                ptr::copy_nonoverlapping(preopen_path.as_ptr(), path, preopen_path.len());
                 Ok(())
             }
         } else {
@@ -2105,11 +2110,11 @@ struct State {
     /// Arguments passed to the `command` entrypoint
     args: Option<&'static [WasmStr]>,
 
-    /// Environment variables passed to the `command` entrypoint
-    env_vars: Option<&'static [StrTuple]>,
+    /// Environment variables
+    env_vars: Option<Vec<(Vec<u8>, Vec<u8>)>>,
 
-    /// Preopened directories passed to the `command` entrypoint
-    preopens: Option<&'static [Preopen]>,
+    /// Preopened directories
+    preopens: Option<Vec<(u32, Vec<u8>)>>,
 
     /// Cache for the `fd_readdir` call for a final `wasi::Dirent` plus path
     /// name that didn't fit into the caller's buffer.
@@ -2158,18 +2163,6 @@ pub struct StrTuple {
 #[repr(C)]
 pub struct StrTupleList {
     base: *const StrTuple,
-    len: usize,
-}
-
-#[repr(C)]
-pub struct Preopen {
-    descriptor: u32,
-    path: WasmStr,
-}
-
-#[repr(C)]
-pub struct PreopenList {
-    base: *const Preopen,
     len: usize,
 }
 
