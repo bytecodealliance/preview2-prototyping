@@ -11,6 +11,7 @@ default world wasi-command {
   import wasi-ip: pkg.wasi-ip
   import wasi-dns: pkg.wasi-dns
   import wasi-exit: pkg.wasi-exit
+  import wasi-http: pkg.wasi-http
 
   export command: func(
     stdin: u32, // TODO `use` from `wasi-io`

@@ -1,6 +1,8 @@
 mod clocks;
 mod exit;
 mod filesystem;
+#[cfg(feature = "http")]
+mod http;
 mod io;
 mod logging;
 mod poll;
@@ -32,5 +34,7 @@ pub fn add_to_linker<T: Send>(
     wasi_random::add_to_linker(l, f)?;
     wasi_tcp::add_to_linker(l, f)?;
     wasi_exit::add_to_linker(l, f)?;
+    #[cfg(feature = "http")]
+    wasi_http::add_to_linker(l, f)?;
     Ok(())
 }
