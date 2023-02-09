@@ -273,8 +273,12 @@ default interface wasi-filesystem {
   /// of a directory.
   ///
   /// Morally, these are a value import, but until value imports are available
-  /// in the component model, this import function should be called at most
-  /// once, and subsequent calls should trap.
+  /// in the component model, this import function should return the same
+  /// value each time it is called.
+  /// 
+  /// When we introduce resource types, this restriction will change and
+  /// this function may be called at most once, and subsequent calls should
+  /// trap, since this will pass ownership of the descriptors to the caller.
   get-preopens: func() -> list<tuple<descriptor, string>>
 
 
