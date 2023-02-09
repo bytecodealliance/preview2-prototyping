@@ -61,7 +61,7 @@ fn main() -> Result<()> {
             | Payload::StartSection { .. }
             | Payload::TagSection(_)
             | Payload::UnknownSection { .. } => {
-                bail!("unsupported section found in preview1.wasm")
+                bail!("unsupported section: {payload:?}")
             }
 
             // component-model related things that shouldn't show up
