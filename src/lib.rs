@@ -264,7 +264,7 @@ pub unsafe extern "C" fn environ_sizes_get(
     environ_buf_size: *mut Size,
 ) -> Errno {
     if matches!(
-        unsafe { get_allocation_state() },
+        get_allocation_state(),
         AllocationState::StackAllocated | AllocationState::StateAllocated
     ) {
         State::with(|state| {
@@ -325,7 +325,7 @@ pub unsafe extern "C" fn clock_time_get(
     time: &mut Timestamp,
 ) -> Errno {
     if matches!(
-        unsafe { get_allocation_state() },
+        get_allocation_state(),
         AllocationState::StackAllocated | AllocationState::StateAllocated
     ) {
         State::with(|state| {
@@ -679,7 +679,7 @@ fn get_preopen(state: &State, fd: Fd) -> Option<&Preopen> {
 #[no_mangle]
 pub unsafe extern "C" fn fd_prestat_get(fd: Fd, buf: *mut Prestat) -> Errno {
     if matches!(
-        unsafe { get_allocation_state() },
+        get_allocation_state(),
         AllocationState::StackAllocated | AllocationState::StateAllocated
     ) {
         State::with(|state| {
@@ -1789,7 +1789,7 @@ pub unsafe extern "C" fn sched_yield() -> Errno {
 #[no_mangle]
 pub unsafe extern "C" fn random_get(buf: *mut u8, buf_len: Size) -> Errno {
     if matches!(
-        unsafe { get_allocation_state() },
+        get_allocation_state(),
         AllocationState::StackAllocated | AllocationState::StateAllocated
     ) {
         State::with(|state| {
