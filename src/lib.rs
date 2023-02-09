@@ -39,6 +39,28 @@ mod bindings {
     });
 }
 
+trait TrappingUnwrap<T> {
+    fn trapping_unwrap(self) -> T;
+}
+
+impl<T> TrappingUnwrap<T> for Option<T> {
+    fn trapping_unwrap(self) -> T {
+        match self {
+            Some(t) => t,
+            None => unreachable!(),
+        }
+    }
+}
+
+impl<T, E> TrappingUnwrap<T> for Result<T, E> {
+    fn trapping_unwrap(self) -> T {
+        match self {
+            Ok(t) => t,
+            Err(_) => unreachable!(),
+        }
+    }
+}
+
 #[no_mangle]
 #[cfg(feature = "command")]
 pub unsafe extern "C" fn command(
@@ -72,17 +94,6 @@ pub unsafe extern "C" fn command(
         /*
         state.preopens = Some(preopens);
 
-        for preopen in preopens {
-            unwrap_result(state.push_desc(Descriptor::Streams(Streams {
-                input: Cell::new(None),
-                output: Cell::new(None),
-                type_: StreamType::File(File {
-                    fd: preopen.descriptor,
-                    position: Cell::new(0),
-                    append: false,
-                }),
-            })));
-        }
         */
 
         Ok(())
@@ -235,7 +246,7 @@ pub unsafe extern "C" fn environ_get(environ: *mut *mut u8, environ_buf: *mut u8
         }
         let mut offsets = environ;
         let mut buffer = environ_buf;
-        for (key, value) in state.env_vars.as_ref().expect("initialized above") {
+        for (key, value) in state.env_vars.as_ref().trapping_unwrap() {
             ptr::write(offsets, buffer);
             offsets = offsets.add(1);
 
@@ -266,7 +277,7 @@ pub unsafe extern "C" fn environ_sizes_get(
         if state.env_vars.is_none() {
             state.env_vars = Some(wasi_environment::get_environment());
         }
-        let vars = state.env_vars.as_ref().expect("initialized above");
+        let vars = state.env_vars.as_ref().trapping_unwrap();
         *environc = vars.len();
         *environ_buf_size = {
             let mut sum = 0;
@@ -654,12 +665,24 @@ pub unsafe extern "C" fn fd_pread(
 
 fn get_preopen(state: &mut State, fd: Fd) -> Option<&(u32, Vec<u8>)> {
     if state.preopens.is_none() {
-        state.preopens = Some(wasi_filesystem::get_preopens());
+        let preopens = wasi_filesystem::get_preopens();
+        for (descriptor, _path) in preopens.iter() {
+            unwrap_result(state.push_desc(Descriptor::Streams(Streams {
+                input: Cell::new(None),
+                output: Cell::new(None),
+                type_: StreamType::File(File {
+                    fd: *descriptor,
+                    position: Cell::new(0),
+                    append: false,
+                }),
+            })));
+        }
+        state.preopens = Some(preopens);
     }
     state
         .preopens
         .as_ref()
-        .expect("initialized above")
+        .trapping_unwrap()
         .get(fd.checked_sub(3)? as usize)
 }
 
