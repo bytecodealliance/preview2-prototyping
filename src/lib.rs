@@ -229,7 +229,7 @@ pub unsafe extern "C" fn args_sizes_get(argc: *mut Size, argv_buf_size: *mut Siz
 /// The sizes of the buffers should match that returned by `environ_sizes_get`.
 #[no_mangle]
 pub unsafe extern "C" fn environ_get(environ: *mut *mut u8, environ_buf: *mut u8) -> Errno {
-    State::with(|state| {
+    State::with_mut(|state| {
         if state.env_vars.is_none() {
             state.env_vars = Some(wasi_environment::get_environment());
         }
@@ -262,7 +262,7 @@ pub unsafe extern "C" fn environ_sizes_get(
     environc: *mut Size,
     environ_buf_size: *mut Size,
 ) -> Errno {
-    State::with(|state| {
+    State::with_mut(|state| {
         if state.env_vars.is_none() {
             state.env_vars = Some(wasi_environment::get_environment());
         }
@@ -564,7 +564,7 @@ pub unsafe extern "C" fn fd_filestat_get(fd: Fd, buf: *mut Filestat) -> Errno {
 /// Note: This is similar to `ftruncate` in POSIX.
 #[no_mangle]
 pub unsafe extern "C" fn fd_filestat_set_size(fd: Fd, size: Filesize) -> Errno {
-    State::with(|state| {
+    State::with_mut(|state| {
         let file = state.get_file(fd)?;
         wasi_filesystem::set_size(file.fd, size)?;
         Ok(())
@@ -666,8 +666,8 @@ fn get_preopen(state: &mut State, fd: Fd) -> Option<&(u32, Vec<u8>)> {
 /// Return a description of the given preopened file descriptor.
 #[no_mangle]
 pub unsafe extern "C" fn fd_prestat_get(fd: Fd, buf: *mut Prestat) -> Errno {
-    State::with(|state| {
-        if let Some((_preopen, path)) = get_preopen(&mut state, fd) {
+    State::with_mut(|state| {
+        if let Some((_preopen, path)) = get_preopen(state, fd) {
             buf.write(Prestat {
                 tag: 0,
                 u: PrestatU {
@@ -687,8 +687,8 @@ pub unsafe extern "C" fn fd_prestat_get(fd: Fd, buf: *mut Prestat) -> Errno {
 /// Return a description of the given preopened file descriptor.
 #[no_mangle]
 pub unsafe extern "C" fn fd_prestat_dir_name(fd: Fd, path: *mut u8, path_len: Size) -> Errno {
-    State::with(|state| {
-        if let Some((_preopen, preopen_path)) = get_preopen(&mut state, fd) {
+    State::with_mut(|state| {
+        if let Some((_preopen, preopen_path)) = get_preopen(state, fd) {
             if preopen_path.len() < path_len as usize {
                 Err(ERRNO_NAMETOOLONG)
             } else {
@@ -2177,7 +2177,7 @@ const fn command_data_size() -> usize {
     start -= size_of::<DirentCache>();
 
     // Remove miscellaneous metadata also stored in state.
-    start -= 21 * size_of::<usize>();
+    start -= 24 * size_of::<usize>();
 
     // Everything else is the `command_data` allocation.
     start
