@@ -1,8 +1,8 @@
 #![allow(unused_variables)] // TODO: remove this when more things are implemented
 
 use crate::bindings::{
-    wasi_clocks, wasi_default_clocks, wasi_environment, wasi_exit, wasi_filesystem, wasi_io,
-    wasi_poll, wasi_random, wasi_stderr, wasi_tcp,
+    wasi_clocks, wasi_default_clocks, wasi_exit, wasi_filesystem, wasi_io, wasi_poll, wasi_random,
+    wasi_stderr, wasi_tcp,
 };
 use core::arch::wasm32;
 use core::cell::{Cell, RefCell, UnsafeCell};
@@ -25,8 +25,8 @@ mod bindings {
         no_std,
         raw_strings,
         unchecked,
-        // The generated definition of command will pull in std, so we are defining it
-        // manually below instead
+        // The generated definitions of these funcs will pull in std,
+        // so we define them manually below
         skip: ["command", "get-preopens", "get-environment"],
     });
 
@@ -36,6 +36,7 @@ mod bindings {
         no_std,
         raw_strings,
         unchecked,
+        skip: ["get-preopens", "get-environment"],
     });
 }
 
@@ -649,41 +650,16 @@ pub unsafe extern "C" fn fd_pread(
     })
 }
 
-fn get_preopen(state: &mut State, fd: Fd) -> Option<&(u32, Vec<u8>)> {
-    /*
-    if state.preopens.is_none() {
-        let preopens = wasi_filesystem::get_preopens();
-    }
-        for (descriptor, _path) in preopens.iter() {
-            unwrap_result(state.push_desc(Descriptor::Streams(Streams {
-                input: Cell::new(None),
-                output: Cell::new(None),
-                type_: StreamType::File(File {
-                    fd: *descriptor,
-                    position: Cell::new(0),
-                    append: false,
-                }),
-            })));
-        }
-        //state.preopens = Some(preopens);
-    }
-    unwrap(state.preopens.as_ref()).get(fd.checked_sub(3)? as usize)
-    */
-    None
-}
-
 /// Return a description of the given preopened file descriptor.
 #[no_mangle]
 pub unsafe extern "C" fn fd_prestat_get(fd: Fd, buf: *mut Prestat) -> Errno {
-    unreachable!()
-    /*
-    State::with_mut(|state| {
-        if let Some((_preopen, path)) = get_preopen(state, fd) {
+    State::with(|state| {
+        if let Some(preopen) = state.get_preopen(fd) {
             buf.write(Prestat {
                 tag: 0,
                 u: PrestatU {
                     dir: PrestatDir {
-                        pr_name_len: path.len(),
+                        pr_name_len: preopen.path.len,
                     },
                 },
             });
@@ -693,27 +669,23 @@ pub unsafe extern "C" fn fd_prestat_get(fd: Fd, buf: *mut Prestat) -> Errno {
             Err(ERRNO_BADF)
         }
     })
-    */
 }
 
 /// Return a description of the given preopened file descriptor.
 #[no_mangle]
 pub unsafe extern "C" fn fd_prestat_dir_name(fd: Fd, path: *mut u8, path_len: Size) -> Errno {
-    unreachable!()
-    /*
-    State::with_mut(|state| {
-        if let Some((_preopen, preopen_path)) = get_preopen(state, fd) {
-            if preopen_path.len() < path_len as usize {
+    State::with(|state| {
+        if let Some(preopen) = state.get_preopen(fd) {
+            if preopen.path.len < path_len as usize {
                 Err(ERRNO_NAMETOOLONG)
             } else {
-                ptr::copy_nonoverlapping(preopen_path.as_ptr(), path, preopen_path.len());
+                ptr::copy_nonoverlapping(preopen.path.ptr, path, preopen.path.len);
                 Ok(())
             }
         } else {
             Err(ERRNO_NOTDIR)
         }
     })
-    */
 }
 
 /// Write to a file descriptor, without using and updating the file descriptor's offset.
@@ -1008,7 +980,7 @@ pub unsafe extern "C" fn fd_renumber(fd: Fd, to: Fd) -> Errno {
 
         // Ensure the table is big enough to contain `to`. Do this before
         // looking up `fd` as it can fail due to `NOMEM`.
-        while Fd::from(state.ndescriptors) <= to {
+        while Fd::from(state.ndescriptors.get()) <= to {
             let old_closed = state.closed;
             let new_closed = state.push_desc(Descriptor::Closed(old_closed))?;
             state.closed = Some(new_closed);
@@ -2107,8 +2079,8 @@ struct State {
 
     /// Storage of mapping from preview1 file descriptors to preview2 file
     /// descriptors.
-    ndescriptors: u16,
-    descriptors: MaybeUninit<[Descriptor; MAX_DESCRIPTORS]>,
+    ndescriptors: Cell<u16>,
+    descriptors: UnsafeCell<MaybeUninit<[Descriptor; MAX_DESCRIPTORS]>>,
 
     /// Points to the head of a free-list of closed file descriptors.
     closed: Option<Fd>,
@@ -2138,14 +2110,17 @@ struct State {
     bump_arena_data: UnsafeCell<MaybeUninit<[u8; command_data_size()]>>,
     bump_arena_next: Cell<u16>,
 
-    /// Arguments passed to the `command` entrypoint
+    /// Arguments passed to the `command` entrypoint. Note, these structures
+    /// are stored inside `bump_arena_data`.
     args: Option<&'static [WasmStr]>,
 
-    /// Environment variables
+    /// Environment variables. Note, these structures are stored inside
+    /// `bump_arena_data`.
     env_vars: Cell<Option<&'static [StrTuple]>>,
 
-    /// Preopened directories
-    //preopens: Option<&'static [(u32, WasmStr)]>,
+    /// Preopened directories. Note, these structures are stored inside
+    /// `bump_arena_data`.
+    preopens: Cell<Option<&'static [PreopenTuple]>>,
 
     /// Cache for the `fd_readdir` call for a final `wasi::Dirent` plus path
     /// name that didn't fit into the caller's buffer.
@@ -2197,6 +2172,18 @@ pub struct StrTupleList {
     len: usize,
 }
 
+#[repr(C)]
+pub struct PreopenTuple {
+    fd: wasi::Fd,
+    path: WasmStr,
+}
+
+#[repr(C)]
+pub struct PreopenTupleList {
+    base: *const PreopenTuple,
+    len: usize,
+}
+
 const fn command_data_size() -> usize {
     // The total size of the struct should be a page, so start there
     let mut start = PAGE_SIZE;
@@ -2208,7 +2195,7 @@ const fn command_data_size() -> usize {
     start -= size_of::<DirentCache>();
 
     // Remove miscellaneous metadata also stored in state.
-    start -= 20 * size_of::<usize>();
+    start -= 22 * size_of::<usize>();
 
     // Everything else is the `command_data` allocation.
     start
@@ -2306,8 +2293,46 @@ impl State {
         unwrap(self.env_vars.get())
     }
 
-    fn get_preopens(&self) -> &[(u32, WasmStr)] {
-        unreachable!()
+    fn get_preopens(&self) -> &[PreopenTuple] {
+        if self.preopens.get().is_none() {
+            #[link(wasm_import_module = "wasi-filesystem")]
+            extern "C" {
+                #[link_name = "get-preopens"]
+                fn get_preopens_import(_: *mut PreopenTupleList);
+            }
+            let mut list = PreopenTupleList {
+                base: std::ptr::null(),
+                len: 0,
+            };
+            self.set_import_realloc_bump_arena();
+            unsafe { get_preopens_import(&mut list as *mut _) };
+            let preopens: &'static [PreopenTuple] = unsafe {
+                // Points into the bump allocator, which is a member of self,
+                // so the lifetime coercion is legal here:
+                std::slice::from_raw_parts(list.base, list.len)
+            };
+            self.clear_import_realloc_bump_arena();
+
+            for preopen in preopens {
+                unwrap_result(self.push_desc(Descriptor::Streams(Streams {
+                    input: Cell::new(None),
+                    output: Cell::new(None),
+                    type_: StreamType::File(File {
+                        fd: preopen.fd,
+                        position: Cell::new(0),
+                        append: false,
+                    }),
+                })));
+            }
+
+            self.preopens.set(Some(preopens));
+        }
+
+        unwrap(self.preopens.get())
+    }
+
+    fn get_preopen(&self, fd: Fd) -> Option<&PreopenTuple> {
+        self.get_preopens().get(fd.checked_sub(3)? as usize)
     }
 
     #[cold]
@@ -2336,15 +2361,15 @@ impl State {
                 magic1: MAGIC,
                 magic2: MAGIC,
                 import_realloc_behavior: Cell::new(ImportReallocBehavior::Trap),
-                ndescriptors: 0,
+                ndescriptors: Cell::new(0),
                 closed: None,
-                descriptors: MaybeUninit::uninit(),
+                descriptors: UnsafeCell::new(MaybeUninit::uninit()),
                 path_buf: UnsafeCell::new(MaybeUninit::uninit()),
                 bump_arena_data: UnsafeCell::new(MaybeUninit::uninit()),
                 bump_arena_next: Cell::new(0),
                 args: None,
                 env_vars: Cell::new(None),
-                //preopens: Cell::new(None),
+                preopens: Cell::new(None),
                 dirent_cache: DirentCache {
                     stream: Cell::new(None),
                     for_fd: Cell::new(0),
@@ -2383,24 +2408,23 @@ impl State {
         unwrap_result(self.push_desc(Descriptor::Stderr));
     }
 
-    fn push_desc(&mut self, desc: Descriptor) -> Result<Fd, Errno> {
+    fn push_desc(&self, desc: Descriptor) -> Result<Fd, Errno> {
         unsafe {
-            let descriptors = self.descriptors.as_mut_ptr();
-            let ndescriptors = unwrap_result(usize::try_from(self.ndescriptors));
+            let descriptors = (*self.descriptors.get()).as_mut_ptr();
+            let ndescriptors = unwrap_result(usize::try_from(self.ndescriptors.get()));
             if ndescriptors >= (*descriptors).len() {
                 return Err(ERRNO_NOMEM);
             }
             ptr::addr_of_mut!((*descriptors)[ndescriptors]).write(desc);
-            self.ndescriptors += 1;
-            Ok(Fd::from(self.ndescriptors - 1))
+            Ok(Fd::from(self.ndescriptors.replace(ndescriptors as u16 + 1)))
         }
     }
 
     fn descriptors(&self) -> &[Descriptor] {
         unsafe {
             slice::from_raw_parts(
-                self.descriptors.as_ptr().cast(),
-                unwrap_result(usize::try_from(self.ndescriptors)),
+                (*self.descriptors.get()).as_ptr().cast(),
+                unwrap_result(usize::try_from(self.ndescriptors.get())),
             )
         }
     }
@@ -2408,8 +2432,8 @@ impl State {
     fn descriptors_mut(&mut self) -> &mut [Descriptor] {
         unsafe {
             slice::from_raw_parts_mut(
-                self.descriptors.as_mut_ptr().cast(),
-                unwrap_result(usize::try_from(self.ndescriptors)),
+                (*self.descriptors.get()).as_mut_ptr().cast(),
+                unwrap_result(usize::try_from(self.ndescriptors.get())),
             )
         }
     }
