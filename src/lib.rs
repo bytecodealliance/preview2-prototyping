@@ -27,7 +27,7 @@ mod bindings {
         unchecked,
         // The generated definition of command will pull in std, so we are defining it
         // manually below instead
-        skip: ["command"],
+        skip: ["command", "get-preopens", "get-environment"],
     });
 
     #[cfg(not(feature = "command"))]
@@ -91,11 +91,6 @@ pub unsafe extern "C" fn command(
         }
         state.args = Some(slice::from_raw_parts(args_ptr, args_len));
 
-        /*
-        state.preopens = Some(preopens);
-
-        */
-
         Ok(())
     });
 
@@ -127,7 +122,7 @@ fn unwrap_result<T, E>(result: Result<T, E>) -> T {
 pub unsafe extern "C" fn cabi_import_realloc(
     old_ptr: *mut u8,
     old_size: usize,
-    _align: usize,
+    align: usize,
     new_size: usize,
 ) -> *mut u8 {
     if !old_ptr.is_null() || old_size != 0 {
@@ -135,14 +130,25 @@ pub unsafe extern "C" fn cabi_import_realloc(
     }
     let mut ptr = null_mut::<u8>();
     State::with(|state| {
-        ptr = state.buffer_ptr.replace(null_mut());
-        if ptr.is_null() {
-            unreachable!();
-        }
-        let len = state.buffer_len.replace(0);
-        if len < new_size {
-            unreachable!();
-        }
+        use ImportReallocBehavior::*;
+        let behavior = state.import_realloc_behavior.replace(Trap);
+        ptr = match behavior {
+            Trap => unreachable!(),
+            Buffer { ptr, len } => {
+                if ptr.is_null() {
+                    unreachable!();
+                }
+                if len < new_size {
+                    unreachable!();
+                }
+                ptr
+            }
+            BumpAllocator => {
+                // Behavior is reset by caller of import function - may need multiple allocations.
+                state.import_realloc_behavior.set(BumpAllocator);
+                state.bump_alloc(align, new_size)
+            }
+        };
         Ok(())
     });
     ptr
@@ -169,26 +175,12 @@ pub unsafe extern "C" fn cabi_export_realloc(
     if !old_ptr.is_null() || old_size != 0 {
         unreachable!();
     }
-    let mut ret = null_mut::<u8>();
-    State::with_mut(|state| {
-        let data = state.command_data.as_mut_ptr();
-        let ptr = align_to(
-            unwrap_result(usize::try_from(state.command_data_next)),
-            align,
-        );
-
-        // "oom" as too much argument data tried to flow into the component.
-        // Ideally this would have a better error message?
-        if ptr + new_size > (*data).len() {
-            unreachable!("out of memory");
-        }
-        state.command_data_next = (ptr + new_size)
-            .try_into()
-            .unwrap_or_else(|_| unreachable!());
-        ret = (*data).as_mut_ptr().add(ptr);
+    let mut res = std::ptr::null_mut();
+    State::with(|state| {
+        res = state.bump_alloc(align, new_size);
         Ok(())
     });
-    ret
+    res
 }
 
 /// Read command-line argument data.
@@ -240,24 +232,21 @@ pub unsafe extern "C" fn args_sizes_get(argc: *mut Size, argv_buf_size: *mut Siz
 /// The sizes of the buffers should match that returned by `environ_sizes_get`.
 #[no_mangle]
 pub unsafe extern "C" fn environ_get(environ: *mut *mut u8, environ_buf: *mut u8) -> Errno {
-    State::with_mut(|state| {
-        if state.env_vars.is_none() {
-            state.env_vars = Some(wasi_environment::get_environment());
-        }
+    State::with(|state| {
         let mut offsets = environ;
         let mut buffer = environ_buf;
-        for (key, value) in state.env_vars.as_ref().trapping_unwrap() {
+        for env in state.get_environment() {
             ptr::write(offsets, buffer);
             offsets = offsets.add(1);
 
-            ptr::copy_nonoverlapping(key.as_ptr(), buffer, key.len());
-            buffer = buffer.add(key.len());
+            ptr::copy_nonoverlapping(env.key.ptr, buffer, env.key.len);
+            buffer = buffer.add(env.key.len);
 
             ptr::write(buffer, b'=');
             buffer = buffer.add(1);
 
-            ptr::copy_nonoverlapping(value.as_ptr(), buffer, value.len());
-            buffer = buffer.add(value.len());
+            ptr::copy_nonoverlapping(env.value.ptr, buffer, env.value.len);
+            buffer = buffer.add(env.value.len);
 
             ptr::write(buffer, 0);
             buffer = buffer.add(1);
@@ -273,16 +262,13 @@ pub unsafe extern "C" fn environ_sizes_get(
     environc: *mut Size,
     environ_buf_size: *mut Size,
 ) -> Errno {
-    State::with_mut(|state| {
-        if state.env_vars.is_none() {
-            state.env_vars = Some(wasi_environment::get_environment());
-        }
-        let vars = state.env_vars.as_ref().trapping_unwrap();
+    State::with(|state| {
+        let vars = state.get_environment();
         *environc = vars.len();
         *environ_buf_size = {
             let mut sum = 0;
-            for (key, value) in vars {
-                sum += key.len() + value.len() + 2;
+            for env in vars {
+                sum += env.key.len + env.value.len + 2;
             }
             sum
         };
@@ -644,7 +630,7 @@ pub unsafe extern "C" fn fd_pread(
     State::with(|state| {
         let ptr = (*iovs_ptr).buf;
         let len = (*iovs_ptr).buf_len;
-        state.register_buffer(ptr, len);
+        state.register_import_realloc_buffer(ptr, len);
 
         let read_len = unwrap_result(u32::try_from(len));
         let file = state.get_file(fd)?;
@@ -664,8 +650,10 @@ pub unsafe extern "C" fn fd_pread(
 }
 
 fn get_preopen(state: &mut State, fd: Fd) -> Option<&(u32, Vec<u8>)> {
+    /*
     if state.preopens.is_none() {
         let preopens = wasi_filesystem::get_preopens();
+    }
         for (descriptor, _path) in preopens.iter() {
             unwrap_result(state.push_desc(Descriptor::Streams(Streams {
                 input: Cell::new(None),
@@ -677,18 +665,18 @@ fn get_preopen(state: &mut State, fd: Fd) -> Option<&(u32, Vec<u8>)> {
                 }),
             })));
         }
-        state.preopens = Some(preopens);
+        //state.preopens = Some(preopens);
     }
-    state
-        .preopens
-        .as_ref()
-        .trapping_unwrap()
-        .get(fd.checked_sub(3)? as usize)
+    unwrap(state.preopens.as_ref()).get(fd.checked_sub(3)? as usize)
+    */
+    None
 }
 
 /// Return a description of the given preopened file descriptor.
 #[no_mangle]
 pub unsafe extern "C" fn fd_prestat_get(fd: Fd, buf: *mut Prestat) -> Errno {
+    unreachable!()
+    /*
     State::with_mut(|state| {
         if let Some((_preopen, path)) = get_preopen(state, fd) {
             buf.write(Prestat {
@@ -705,11 +693,14 @@ pub unsafe extern "C" fn fd_prestat_get(fd: Fd, buf: *mut Prestat) -> Errno {
             Err(ERRNO_BADF)
         }
     })
+    */
 }
 
 /// Return a description of the given preopened file descriptor.
 #[no_mangle]
 pub unsafe extern "C" fn fd_prestat_dir_name(fd: Fd, path: *mut u8, path_len: Size) -> Errno {
+    unreachable!()
+    /*
     State::with_mut(|state| {
         if let Some((_preopen, preopen_path)) = get_preopen(state, fd) {
             if preopen_path.len() < path_len as usize {
@@ -722,6 +713,7 @@ pub unsafe extern "C" fn fd_prestat_dir_name(fd: Fd, path: *mut u8, path_len: Si
             Err(ERRNO_NOTDIR)
         }
     })
+    */
 }
 
 /// Write to a file descriptor, without using and updating the file descriptor's offset.
@@ -778,7 +770,7 @@ pub unsafe extern "C" fn fd_read(
     let len = (*iovs_ptr).buf_len;
 
     State::with(|state| {
-        state.register_buffer(ptr, len);
+        state.register_import_realloc_buffer(ptr, len);
 
         match state.get(fd)? {
             Descriptor::Streams(streams) => {
@@ -975,7 +967,7 @@ pub unsafe extern "C" fn fd_readdir(
                 });
             }
             self.state
-                .register_buffer(self.state.path_buf.get().cast(), PATH_MAX);
+                .register_import_realloc_buffer(self.state.path_buf.get().cast(), PATH_MAX);
             let entry = match wasi_filesystem::read_dir_entry(self.stream.0) {
                 Ok(Some(entry)) => entry,
                 Ok(None) => return None,
@@ -1337,9 +1329,9 @@ pub unsafe extern "C" fn path_readlink(
         let use_state_buf = buf_len < PATH_MAX;
 
         if use_state_buf {
-            state.register_buffer(state.path_buf.get().cast(), PATH_MAX);
+            state.register_import_realloc_buffer(state.path_buf.get().cast(), PATH_MAX);
         } else {
-            state.register_buffer(buf, buf_len);
+            state.register_import_realloc_buffer(buf, buf_len);
         }
 
         let file = state.get_dir(fd)?;
@@ -1516,7 +1508,7 @@ pub unsafe extern "C" fn poll_oneoff(
     }
 
     State::with(|state| {
-        state.register_buffer(
+        state.register_import_realloc_buffer(
             results,
             unwrap(nsubscriptions.checked_mul(size_of::<bool>())),
         );
@@ -1792,7 +1784,7 @@ pub unsafe extern "C" fn sched_yield() -> Errno {
 #[no_mangle]
 pub unsafe extern "C" fn random_get(buf: *mut u8, buf_len: Size) -> Errno {
     State::with(|state| {
-        state.register_buffer(buf, buf_len);
+        state.register_import_realloc_buffer(buf, buf_len);
 
         assert_eq!(buf_len as u32 as Size, buf_len);
         let result = wasi_random::get_random_bytes(buf_len as u32);
@@ -2101,16 +2093,17 @@ const DIRENT_CACHE: usize = 256;
 /// A canary value to detect memory corruption within `State`.
 const MAGIC: u32 = u32::from_le_bytes(*b"ugh!");
 
+enum ImportReallocBehavior {
+    Buffer { ptr: *mut u8, len: usize },
+    BumpAllocator,
+    Trap,
+}
+
 #[repr(C)] // used for now to keep magic1 and magic2 at the start and end
 struct State {
     /// A canary constant value located at the beginning of this structure to
     /// try to catch memory corruption coming from the bottom.
     magic1: u32,
-
-    /// Used by `register_buffer` to coordinate allocations with
-    /// `cabi_import_realloc`.
-    buffer_ptr: Cell<*mut u8>,
-    buffer_len: Cell<usize>,
 
     /// Storage of mapping from preview1 file descriptors to preview2 file
     /// descriptors.
@@ -2123,21 +2116,36 @@ struct State {
     /// Auxiliary storage to handle the `path_readlink` function.
     path_buf: UnsafeCell<MaybeUninit<[u8; PATH_MAX]>>,
 
-    /// Storage area for data passed to the `command` entrypoint. The
-    /// `command_data` is a block of memory which is dynamically allocated from
-    /// in `cabi_export_realloc`. The `command_data_next` is the
-    /// bump-allocated-pointer of where to allocate from next.
-    command_data: MaybeUninit<[u8; command_data_size()]>,
-    command_data_next: u16,
+    /// Coordinates the behavior of `cabi_import_realloc`. This behavior is
+    /// set before calling a component import function whose return values
+    /// require allocation, for which the component runtime will call
+    /// cabi_import_realloc.
+    ///
+    /// When return values are required to live for the lifetime of State,
+    /// use the ImportReallocBehavior::BumpAllocator, which will use
+    /// `bump_arena_data` as the arena.
+    ///
+    /// When a shorter lifetime is desired, callers can reuse another
+    /// buffer as appropriate, e.g. `path_buf`.
+    import_realloc_behavior: Cell<ImportReallocBehavior>,
+
+    /// Storage area for arena-style allocations made by the cabi realloc
+    /// functions. The `bump_arena_data` is a block of memory which is
+    /// dynamically allocated from in `cabi_export_realloc`, and by
+    /// `cabi_import_realloc` when the behavior is set to `BumpAllocator`.
+    /// `command_data_next` is the bump-allocated-pointer of where to allocate
+    /// from next.
+    bump_arena_data: UnsafeCell<MaybeUninit<[u8; command_data_size()]>>,
+    bump_arena_next: Cell<u16>,
 
     /// Arguments passed to the `command` entrypoint
     args: Option<&'static [WasmStr]>,
 
     /// Environment variables
-    env_vars: Option<Vec<(Vec<u8>, Vec<u8>)>>,
+    env_vars: Cell<Option<&'static [StrTuple]>>,
 
     /// Preopened directories
-    preopens: Option<Vec<(u32, Vec<u8>)>>,
+    //preopens: Option<&'static [(u32, WasmStr)]>,
 
     /// Cache for the `fd_readdir` call for a final `wasi::Dirent` plus path
     /// name that didn't fit into the caller's buffer.
@@ -2200,7 +2208,7 @@ const fn command_data_size() -> usize {
     start -= size_of::<DirentCache>();
 
     // Remove miscellaneous metadata also stored in state.
-    start -= 24 * size_of::<usize>();
+    start -= 20 * size_of::<usize>();
 
     // Everything else is the `command_data` allocation.
     start
@@ -2255,6 +2263,53 @@ impl State {
         }
     }
 
+    fn bump_alloc(&self, align: usize, size: usize) -> *mut u8 {
+        unsafe {
+            let data = (*self.bump_arena_data.get()).as_mut_ptr();
+            let ptr = align_to(
+                unwrap_result(usize::try_from(self.bump_arena_next.get())),
+                align,
+            );
+
+            // "oom" as too much argument data tried to flow into the component.
+            // Ideally this would have a better error message?
+            if ptr + size > (*data).len() {
+                unreachable!("out of memory");
+            }
+            self.bump_arena_next
+                .set((ptr + size).try_into().unwrap_or_else(|_| unreachable!()));
+            (*data).as_mut_ptr().add(ptr)
+        }
+    }
+
+    fn get_environment(&self) -> &[StrTuple] {
+        if self.env_vars.get().is_none() {
+            #[link(wasm_import_module = "wasi-environment")]
+            extern "C" {
+                #[link_name = "get-environment"]
+                fn get_environment_import(_: *mut StrTupleList);
+            }
+            let mut list = StrTupleList {
+                base: std::ptr::null(),
+                len: 0,
+            };
+            self.set_import_realloc_bump_arena();
+            unsafe { get_environment_import(&mut list as *mut _) };
+            self.env_vars.set(Some(unsafe {
+                // Points into the bump allocator, which is a member of self,
+                // so the lifetime coercion is legal here:
+                std::slice::from_raw_parts(list.base, list.len)
+            }));
+            self.clear_import_realloc_bump_arena();
+        }
+
+        unwrap(self.env_vars.get())
+    }
+
+    fn get_preopens(&self) -> &[(u32, WasmStr)] {
+        unreachable!()
+    }
+
     #[cold]
     fn new() -> &'static RefCell<State> {
         #[link(wasm_import_module = "__main_module__")]
@@ -2280,17 +2335,16 @@ impl State {
             ret.write(RefCell::new(State {
                 magic1: MAGIC,
                 magic2: MAGIC,
-                buffer_ptr: Cell::new(null_mut()),
-                buffer_len: Cell::new(0),
+                import_realloc_behavior: Cell::new(ImportReallocBehavior::Trap),
                 ndescriptors: 0,
                 closed: None,
                 descriptors: MaybeUninit::uninit(),
                 path_buf: UnsafeCell::new(MaybeUninit::uninit()),
-                command_data: MaybeUninit::uninit(),
-                command_data_next: 0,
+                bump_arena_data: UnsafeCell::new(MaybeUninit::uninit()),
+                bump_arena_next: Cell::new(0),
                 args: None,
-                env_vars: None,
-                preopens: None,
+                env_vars: Cell::new(None),
+                //preopens: Cell::new(None),
                 dirent_cache: DirentCache {
                     stream: Cell::new(None),
                     for_fd: Cell::new(0),
@@ -2433,11 +2487,40 @@ impl State {
         }
     }
 
-    /// Register `buf` and `buf_len` to be used by `cabi_realloc` to satisfy
-    /// the next request.
-    fn register_buffer(&self, buf: *mut u8, buf_len: usize) {
-        self.buffer_ptr.set(buf);
-        self.buffer_len.set(buf_len);
+    /// Register memory area at `ptr` of size `len` to be used by
+    /// `cabi_import_realloc` to satisfy the next request.
+    fn register_import_realloc_buffer(&self, ptr: *mut u8, len: usize) {
+        match self
+            .import_realloc_behavior
+            .replace(ImportReallocBehavior::Buffer { ptr, len })
+        {
+            ImportReallocBehavior::Trap => {}
+            _ => unreachable!(),
+        }
+    }
+
+    /// Set `cabi_import_realloc` to use the bump allocator arena
+    /// to satisfy the next requests. The memory allocated for these values
+    /// will live as long as State.
+    fn set_import_realloc_bump_arena(&self) {
+        match self
+            .import_realloc_behavior
+            .replace(ImportReallocBehavior::BumpAllocator)
+        {
+            ImportReallocBehavior::Trap => {}
+            _ => unreachable!(),
+        }
+    }
+    /// Unset the `cabi_import_realloc` behavior after using
+    /// `set_import_realloc_bump_arena`.
+    fn clear_import_realloc_bump_arena(&self) {
+        match self
+            .import_realloc_behavior
+            .replace(ImportReallocBehavior::Trap)
+        {
+            ImportReallocBehavior::BumpAllocator => {}
+            _ => unreachable!(),
+        }
     }
 
     /// Return a handle to the default wall clock, creating one if we
