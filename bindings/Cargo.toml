@@ -1,0 +1,10 @@
+[package]
+name = "wasi-bindings"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+wit-bindgen-guest-rust = { git = "https://github.com/bytecodealliance/wit-bindgen", default-features = false, features = ["macros", "realloc"] }
+
+[lib]
+crate-type = ["lib"]
