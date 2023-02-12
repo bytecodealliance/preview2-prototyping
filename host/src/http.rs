@@ -6,7 +6,7 @@ use reqwest::{Client, Method};
 
 #[async_trait::async_trait]
 impl WasiHttp for WasiCtx {
-    async fn make_request(&mut self, req: Request) -> HostResult<Response, HttpError> {
+    async fn send(&mut self, req: Request) -> HostResult<Response, HttpError> {
         let client = Client::default();
         let mut builder = client.request(
             Method::from_bytes(req.method.as_bytes())?,

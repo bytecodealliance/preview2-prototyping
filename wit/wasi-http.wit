@@ -42,5 +42,5 @@ default interface wasi-http {
         unexpected-error(string)
     }
 
-    make-request: func(req: request) -> result<response, http-error>
+    send: func(req: request) -> result<response, http-error>
 }
