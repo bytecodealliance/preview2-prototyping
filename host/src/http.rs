@@ -1,12 +1,12 @@
 use crate::{
-    wasi_http::{Request, Response, WasiHttp},
-    WasiCtx
+    wasi_http::{HttpError, Request, Response, WasiHttp},
+    HostResult, WasiCtx
 };
 use reqwest::{Client, Method};
 
 #[async_trait::async_trait]
 impl WasiHttp for WasiCtx {
-    async fn make_request(&mut self, req: Request) -> anyhow::Result<Response> {
+    async fn make_request(&mut self, req: Request) -> HostResult<Response, HttpError> {
         let client = Client::default();
         let mut builder = client.request(
             Method::from_bytes(req.method.as_bytes())?,
@@ -25,10 +25,16 @@ impl WasiHttp for WasiCtx {
             ));
         }
         let body = Some(res.bytes().await?.to_vec());
-        Ok(Response {
+        Ok(Ok(Response {
             status,
             headers: Some(headers),
             body,
-        })
+        }))
+    }
+}
+
+impl From<reqwest::Error> for HttpError {
+    fn from(e: reqwest::Error) -> Self {
+        Self::UnexpectedError(e.to_string())
     }
 }

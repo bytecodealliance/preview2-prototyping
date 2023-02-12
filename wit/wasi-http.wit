@@ -33,5 +33,14 @@ default interface wasi-http {
         body: option<body>,
     }
 
-    make-request: func(req: request) -> response
+    /// HTTP errors returned by the runtime.
+    variant http-error {
+        invalid-url(string),
+        timeout-error(string),
+        protocol-error(string),
+        status-error(u16),
+        unexpected-error(string)
+    }
+
+    make-request: func(req: request) -> result<response, http-error>
 }
