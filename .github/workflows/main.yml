@@ -71,7 +71,9 @@ jobs:
         path: wasi_snapshot_preview1.command.wasm
     - run: cargo build --target wasm32-unknown-unknown --release
 
-    - run: cargo install --locked --git https://github.com/bytecodealliance/wit-bindgen --rev ef00821dc41fb5fd212311757713c61e8bffa3ba wit-bindgen-cli
+    - run: |
+        curl -L https://github.com/bytecodealliance/wit-bindgen/releases/download/wit-bindgen-cli-0.3.0/wit-bindgen-v0.3.0-x86_64-linux.tar.gz | tar xfz -
+        echo `pwd`/wit-bindgen-v0.3.0-x86_64-linux >> $GITHUB_PATH
     - run: wit-bindgen c ./wit --world wasi-command
     - uses: actions/upload-artifact@v3
       with:
