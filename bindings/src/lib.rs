@@ -1,5 +1,5 @@
 mod bindings {
-    wit_bindgen_guest_rust::generate!({
+    wit_bindgen::generate!({
         path: "../wit",
         world: "wasi",
         no_std,
