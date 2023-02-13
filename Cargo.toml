@@ -33,7 +33,7 @@ wit-bindgen-guest-rust = { git = "https://github.com/bytecodealliance/wit-bindge
 byte-array = { path = "byte-array" }
 
 [build-dependencies]
-wasm-encoder = "0.22.1"
+wasm-encoder = "0.23"
 object = { version = "0.29.0", default-features = false, features = ["archive"] }
 
 [lib]

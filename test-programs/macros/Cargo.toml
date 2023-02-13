@@ -13,5 +13,4 @@ test = false
 quote = "1.0"
 
 [build-dependencies]
-# TODO: switch to a release once https://github.com/bytecodealliance/wasm-tools/pull/919 has been merged
-wit-component = { git = "https://github.com/dicej/wasm-tools", branch = "lazy-adapter-stack-backport" }
+wit-component = "0.6.0"
