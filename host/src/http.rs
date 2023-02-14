@@ -1,15 +1,14 @@
 use crate::{
-    wasi_http::{HttpError, Request, Response, WasiHttp},
+    wasi_http::{HttpError, Method, Request, Response, WasiHttp},
     HostResult, WasiCtx
 };
-use reqwest::{Client, Method};
 
 #[async_trait::async_trait]
 impl WasiHttp for WasiCtx {
     async fn send(&mut self, req: Request) -> HostResult<Response, HttpError> {
-        let client = Client::default();
+        let client = reqwest::Client::default();
         let mut builder = client.request(
-            Method::from_bytes(req.method.as_bytes())?,
+            req.method.into(),
             req.uri,
         );
         for header in req.headers {
@@ -36,5 +35,20 @@ impl WasiHttp for WasiCtx {
 impl From<reqwest::Error> for HttpError {
     fn from(e: reqwest::Error) -> Self {
         Self::UnexpectedError(e.to_string())
+    }
+}
+
+impl From<Method> for reqwest::Method {
+    fn from(method: Method) -> Self {
+        match method {
+           Method::Get => reqwest::Method::GET,
+           Method::Post => reqwest::Method::POST,
+           Method::Put => reqwest::Method::PUT,
+           Method::Delete => reqwest::Method::DELETE,
+           Method::Patch => reqwest::Method::PATCH,
+           Method::Head => reqwest::Method::HEAD,
+           Method::Options => reqwest::Method::OPTIONS,
+            _ => panic!("failed due to unsupported method, currently supported methods are: GET, POST, PUT, DELETE, PATCH, HEAD, and OPTIONS"),
+        }
     }
 }

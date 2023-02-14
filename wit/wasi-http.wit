@@ -15,7 +15,15 @@ default interface wasi-http {
     type uri = string
 
     /// The HTTP method.
-    type method = string
+    enum method {
+        get,
+        post,
+        put,
+        delete,
+        patch,
+        head,
+        options,
+    }
 
     /// An HTTP request.
     record request {
