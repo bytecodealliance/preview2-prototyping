@@ -135,11 +135,14 @@ pub unsafe extern "C" fn cabi_import_realloc(
         let behavior = state.import_realloc_behavior.replace(Trap);
         ptr = match behavior {
             Trap => unreachable!(),
-            Buffer { ptr, len } => {
+            Buffer { ptr, len, position } => {
                 if ptr.is_null() {
                     unreachable!();
                 }
-                if len < new_size {
+                if position > len {
+                    unreachable!()
+                }
+                if (len - position) < new_size {
                     unreachable!();
                 }
                 ptr
@@ -629,13 +632,16 @@ pub unsafe extern "C" fn fd_pread(
     }
 
     State::with(|state| {
+        let file = state.get_file(fd)?;
+
         let ptr = (*iovs_ptr).buf;
         let len = (*iovs_ptr).buf_len;
         state.register_import_realloc_buffer(ptr, len);
-
         let read_len = unwrap_result(u32::try_from(len));
-        let file = state.get_file(fd)?;
-        let (data, end) = wasi_filesystem::pread(file.fd, read_len, offset)?;
+        let r = wasi_filesystem::pread(file.fd, read_len, offset);
+        // Clear state before unwrapping result
+        state.clear_import_realloc_buffer();
+        let (data, end) = r?;
         assert_eq!(data.as_ptr(), ptr);
         assert!(data.len() <= len);
 
@@ -742,15 +748,18 @@ pub unsafe extern "C" fn fd_read(
     let len = (*iovs_ptr).buf_len;
 
     State::with(|state| {
-        state.register_import_realloc_buffer(ptr, len);
-
         match state.get(fd)? {
             Descriptor::Streams(streams) => {
                 let wasi_stream = streams.get_read_stream()?;
 
                 let read_len = unwrap_result(u64::try_from(len));
                 let wasi_stream = streams.get_read_stream()?;
-                let (data, end) = wasi_io::read(wasi_stream, read_len).map_err(|_| ERRNO_IO)?;
+
+                state.register_import_realloc_buffer(ptr, len);
+                let r = wasi_io::read(wasi_stream, read_len);
+                state.clear_import_realloc_buffer();
+
+                let (data, end) = r.map_err(|_| ERRNO_IO)?;
 
                 assert_eq!(data.as_ptr(), ptr);
                 assert!(data.len() <= len);
@@ -940,7 +949,9 @@ pub unsafe extern "C" fn fd_readdir(
             }
             self.state
                 .register_import_realloc_buffer(self.state.path_buf.get().cast(), PATH_MAX);
-            let entry = match wasi_filesystem::read_dir_entry(self.stream.0) {
+            let r = wasi_filesystem::read_dir_entry(self.stream.0);
+            self.state.clear_import_realloc_buffer();
+            let entry = match r {
                 Ok(Some(entry)) => entry,
                 Ok(None) => return None,
                 Err(e) => return Some(Err(e.into())),
@@ -1300,14 +1311,16 @@ pub unsafe extern "C" fn path_readlink(
         // so instead we handle this case specially.
         let use_state_buf = buf_len < PATH_MAX;
 
+        let file = state.get_dir(fd)?;
+
         if use_state_buf {
             state.register_import_realloc_buffer(state.path_buf.get().cast(), PATH_MAX);
         } else {
             state.register_import_realloc_buffer(buf, buf_len);
         }
-
-        let file = state.get_dir(fd)?;
-        let path = wasi_filesystem::readlink_at(file.fd, path)?;
+        let r = wasi_filesystem::readlink_at(file.fd, path);
+        state.clear_import_realloc_buffer();
+        let path = r?;
 
         assert_eq!(path.as_ptr(), buf);
         assert!(path.len() <= buf_len);
@@ -1480,6 +1493,7 @@ pub unsafe extern "C" fn poll_oneoff(
     }
 
     State::with(|state| {
+        // IMPORTANT: make sure to clear this state before returning!
         state.register_import_realloc_buffer(
             results,
             unwrap(nsubscriptions.checked_mul(size_of::<bool>())),
@@ -1543,7 +1557,10 @@ pub unsafe extern "C" fn poll_oneoff(
                             absolute,
                         ),
 
-                        _ => return Err(ERRNO_INVAL),
+                        _ => {
+                            state.clear_import_realloc_buffer();
+                            return Err(ERRNO_INVAL);
+                        }
                     }
                 }
 
@@ -1558,7 +1575,10 @@ pub unsafe extern "C" fn poll_oneoff(
                             0,
                             false,
                         ),
-                        Err(e) => return Err(e),
+                        Err(e) => {
+                            state.clear_import_realloc_buffer();
+                            return Err(e);
+                        }
                     }
                 }
 
@@ -1573,11 +1593,17 @@ pub unsafe extern "C" fn poll_oneoff(
                             0,
                             false,
                         ),
-                        Err(e) => return Err(e),
+                        Err(e) => {
+                            state.clear_import_realloc_buffer();
+                            return Err(e);
+                        }
                     }
                 }
 
-                _ => return Err(ERRNO_INVAL),
+                _ => {
+                    state.clear_import_realloc_buffer();
+                    return Err(ERRNO_INVAL);
+                }
             });
         }
 
@@ -1717,6 +1743,7 @@ pub unsafe extern "C" fn poll_oneoff(
 
         *nevents = count;
 
+        state.clear_import_realloc_buffer();
         Ok(())
     })
 }
@@ -1762,6 +1789,7 @@ pub unsafe extern "C" fn random_get(buf: *mut u8, buf_len: Size) -> Errno {
         let result = wasi_random::get_random_bytes(buf_len as u32);
         assert_eq!(result.as_ptr(), buf);
 
+        state.clear_import_realloc_buffer();
         // The returned buffer's memory was allocated in `buf`, so don't separately
         // free it.
         forget(result);
@@ -2066,7 +2094,11 @@ const DIRENT_CACHE: usize = 256;
 const MAGIC: u32 = u32::from_le_bytes(*b"ugh!");
 
 enum ImportReallocBehavior {
-    Buffer { ptr: *mut u8, len: usize },
+    Buffer {
+        ptr: *mut u8,
+        len: usize,
+        position: usize,
+    },
     BumpAllocator,
     Trap,
 }
@@ -2195,7 +2227,7 @@ const fn command_data_size() -> usize {
     start -= size_of::<DirentCache>();
 
     // Remove miscellaneous metadata also stored in state.
-    start -= 22 * size_of::<usize>();
+    start -= 24 * size_of::<usize>();
 
     // Everything else is the `command_data` allocation.
     start
@@ -2516,9 +2548,21 @@ impl State {
     fn register_import_realloc_buffer(&self, ptr: *mut u8, len: usize) {
         match self
             .import_realloc_behavior
-            .replace(ImportReallocBehavior::Buffer { ptr, len })
-        {
+            .replace(ImportReallocBehavior::Buffer {
+                ptr,
+                len,
+                position: 0,
+            }) {
             ImportReallocBehavior::Trap => {}
+            _ => unreachable!(),
+        }
+    }
+    fn clear_import_realloc_buffer(&self) {
+        match self
+            .import_realloc_behavior
+            .replace(ImportReallocBehavior::Trap)
+        {
+            ImportReallocBehavior::Buffer { .. } => {}
             _ => unreachable!(),
         }
     }
