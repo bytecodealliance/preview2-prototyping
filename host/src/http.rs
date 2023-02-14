@@ -48,7 +48,6 @@ impl From<Method> for reqwest::Method {
            Method::Patch => reqwest::Method::PATCH,
            Method::Head => reqwest::Method::HEAD,
            Method::Options => reqwest::Method::OPTIONS,
-            _ => panic!("failed due to unsupported method, currently supported methods are: GET, POST, PUT, DELETE, PATCH, HEAD, and OPTIONS"),
         }
     }
 }
