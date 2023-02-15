@@ -132,26 +132,16 @@ pub unsafe extern "C" fn cabi_import_realloc(
     let mut ptr = null_mut::<u8>();
     State::with(|state| {
         use ImportReallocBehavior::*;
-        let behavior = state.import_realloc_behavior.replace(Trap);
-        ptr = match behavior {
+        let behavior = state.import_realloc_behavior.borrow();
+        ptr = match &*behavior {
             Trap => unreachable!(),
-            Buffer { ptr, len, position } => {
+            ShortLivedArena(arena) => {
                 if ptr.is_null() {
                     unreachable!();
                 }
-                if position > len {
-                    unreachable!()
-                }
-                if (len - position) < new_size {
-                    unreachable!();
-                }
-                ptr
+                arena.alloc(align, new_size)
             }
-            BumpAllocator => {
-                // Behavior is reset by caller of import function - may need multiple allocations.
-                state.import_realloc_behavior.set(BumpAllocator);
-                state.bump_alloc(align, new_size)
-            }
+            LongLivedArena => state.long_lived_arena.alloc(align, new_size),
         };
         Ok(())
     });
@@ -181,7 +171,7 @@ pub unsafe extern "C" fn cabi_export_realloc(
     }
     let mut res = std::ptr::null_mut();
     State::with(|state| {
-        res = state.bump_alloc(align, new_size);
+        res = state.long_lived_arena.alloc(align, new_size);
         Ok(())
     });
     res
@@ -2094,13 +2084,34 @@ const DIRENT_CACHE: usize = 256;
 const MAGIC: u32 = u32::from_le_bytes(*b"ugh!");
 
 enum ImportReallocBehavior {
-    Buffer {
-        ptr: *mut u8,
-        len: usize,
-        position: usize,
-    },
-    BumpAllocator,
+    ShortLivedArena(BumpArena),
+    LongLivedArena,
     Trap,
+}
+
+struct BumpArena {
+    start: *mut u8,
+    len: usize,
+    position: Cell<usize>,
+}
+
+impl BumpArena {
+    fn for_buffer(start: *mut u8, len: usize) -> Self {
+        BumpArena {
+            start,
+            len,
+            position: Cell::new(0),
+        }
+    }
+    fn alloc(&self, align: usize, size: usize) -> *mut u8 {
+        let next = self.start as usize + self.position.get();
+        let ptr = align_to(next, align);
+        if ptr + size > self.len {
+            unreachable!("out of memory");
+        }
+        self.position.set(ptr + size);
+        unsafe { self.start.add(ptr) }
+    }
 }
 
 #[repr(C)] // used for now to keep magic1 and magic2 at the start and end
@@ -2131,7 +2142,7 @@ struct State {
     ///
     /// When a shorter lifetime is desired, callers can reuse another
     /// buffer as appropriate, e.g. `path_buf`.
-    import_realloc_behavior: Cell<ImportReallocBehavior>,
+    import_realloc_behavior: RefCell<ImportReallocBehavior>,
 
     /// Storage area for arena-style allocations made by the cabi realloc
     /// functions. The `bump_arena_data` is a block of memory which is
@@ -2139,8 +2150,8 @@ struct State {
     /// `cabi_import_realloc` when the behavior is set to `BumpAllocator`.
     /// `command_data_next` is the bump-allocated-pointer of where to allocate
     /// from next.
-    bump_arena_data: UnsafeCell<MaybeUninit<[u8; command_data_size()]>>,
-    bump_arena_next: Cell<u16>,
+    long_lived_data: UnsafeCell<MaybeUninit<[u8; long_lived_arena_size()]>>,
+    long_lived_arena: BumpArena,
 
     /// Arguments passed to the `command` entrypoint. Note, these structures
     /// are stored inside `bump_arena_data`.
@@ -2216,7 +2227,7 @@ pub struct PreopenTupleList {
     len: usize,
 }
 
-const fn command_data_size() -> usize {
+const fn long_lived_arena_size() -> usize {
     // The total size of the struct should be a page, so start there
     let mut start = PAGE_SIZE;
 
@@ -2227,7 +2238,7 @@ const fn command_data_size() -> usize {
     start -= size_of::<DirentCache>();
 
     // Remove miscellaneous metadata also stored in state.
-    start -= 24 * size_of::<usize>();
+    start -= 26 * size_of::<usize>();
 
     // Everything else is the `command_data` allocation.
     start
@@ -2279,25 +2290,6 @@ impl State {
                 set_global_ptr(ptr);
             }
             &*ptr
-        }
-    }
-
-    fn bump_alloc(&self, align: usize, size: usize) -> *mut u8 {
-        unsafe {
-            let data = (*self.bump_arena_data.get()).as_mut_ptr();
-            let ptr = align_to(
-                unwrap_result(usize::try_from(self.bump_arena_next.get())),
-                align,
-            );
-
-            // "oom" as too much argument data tried to flow into the component.
-            // Ideally this would have a better error message?
-            if ptr + size > (*data).len() {
-                unreachable!("out of memory");
-            }
-            self.bump_arena_next
-                .set((ptr + size).try_into().unwrap_or_else(|_| unreachable!()));
-            (*data).as_mut_ptr().add(ptr)
         }
     }
 
@@ -2389,16 +2381,23 @@ impl State {
         };
 
         let ret = unsafe {
+            let long_lived_data: UnsafeCell<MaybeUninit<[u8; long_lived_arena_size()]>> =
+                UnsafeCell::new(MaybeUninit::uninit());
+            let long_lived_arena = BumpArena {
+                start: (*long_lived_data.get()).as_mut_ptr() as *mut u8,
+                len: long_lived_arena_size(),
+                position: Cell::new(0),
+            };
             ret.write(RefCell::new(State {
                 magic1: MAGIC,
                 magic2: MAGIC,
-                import_realloc_behavior: Cell::new(ImportReallocBehavior::Trap),
+                import_realloc_behavior: RefCell::new(ImportReallocBehavior::Trap),
                 ndescriptors: Cell::new(0),
                 closed: None,
                 descriptors: UnsafeCell::new(MaybeUninit::uninit()),
                 path_buf: UnsafeCell::new(MaybeUninit::uninit()),
-                bump_arena_data: UnsafeCell::new(MaybeUninit::uninit()),
-                bump_arena_next: Cell::new(0),
+                long_lived_data,
+                long_lived_arena,
                 args: None,
                 env_vars: Cell::new(None),
                 preopens: Cell::new(None),
@@ -2548,11 +2547,9 @@ impl State {
     fn register_import_realloc_buffer(&self, ptr: *mut u8, len: usize) {
         match self
             .import_realloc_behavior
-            .replace(ImportReallocBehavior::Buffer {
-                ptr,
-                len,
-                position: 0,
-            }) {
+            .replace(ImportReallocBehavior::ShortLivedArena(
+                BumpArena::for_buffer(ptr, len),
+            )) {
             ImportReallocBehavior::Trap => {}
             _ => unreachable!(),
         }
@@ -2562,7 +2559,7 @@ impl State {
             .import_realloc_behavior
             .replace(ImportReallocBehavior::Trap)
         {
-            ImportReallocBehavior::Buffer { .. } => {}
+            ImportReallocBehavior::ShortLivedArena { .. } => {}
             _ => unreachable!(),
         }
     }
@@ -2573,7 +2570,7 @@ impl State {
     fn set_import_realloc_bump_arena(&self) {
         match self
             .import_realloc_behavior
-            .replace(ImportReallocBehavior::BumpAllocator)
+            .replace(ImportReallocBehavior::LongLivedArena)
         {
             ImportReallocBehavior::Trap => {}
             _ => unreachable!(),
@@ -2586,7 +2583,7 @@ impl State {
             .import_realloc_behavior
             .replace(ImportReallocBehavior::Trap)
         {
-            ImportReallocBehavior::BumpAllocator => {}
+            ImportReallocBehavior::LongLivedArena => {}
             _ => unreachable!(),
         }
     }
