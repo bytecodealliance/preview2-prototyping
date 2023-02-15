@@ -132,16 +132,19 @@ pub unsafe extern "C" fn cabi_import_realloc(
     let mut ptr = null_mut::<u8>();
     State::with(|state| {
         use ImportReallocBehavior::*;
-        let behavior = state.import_realloc_behavior.borrow();
-        ptr = match &*behavior {
+        let behavior = state.import_realloc_behavior.replace(Trap);
+        match behavior {
             Trap => unreachable!(),
             ShortLivedArena(arena) => {
-                if ptr.is_null() {
-                    unreachable!();
-                }
-                arena.alloc(align, new_size)
+                ptr = arena.alloc(align, new_size);
+                state
+                    .import_realloc_behavior
+                    .replace(ShortLivedArena(arena));
             }
-            LongLivedArena => state.long_lived_arena.alloc(align, new_size),
+            LongLivedArena => {
+                ptr = state.long_lived_arena.alloc(align, new_size);
+                state.import_realloc_behavior.replace(LongLivedArena);
+            }
         };
         Ok(())
     });
@@ -2104,6 +2107,9 @@ impl BumpArena {
         }
     }
     fn alloc(&self, align: usize, size: usize) -> *mut u8 {
+        if self.start.is_null() {
+            unreachable!();
+        }
         let next = self.start as usize + self.position.get();
         let ptr = align_to(next, align);
         if ptr + size > self.len {
@@ -2142,7 +2148,7 @@ struct State {
     ///
     /// When a shorter lifetime is desired, callers can reuse another
     /// buffer as appropriate, e.g. `path_buf`.
-    import_realloc_behavior: RefCell<ImportReallocBehavior>,
+    import_realloc_behavior: Cell<ImportReallocBehavior>,
 
     /// Storage area for arena-style allocations made by the cabi realloc
     /// functions. The `bump_arena_data` is a block of memory which is
@@ -2391,7 +2397,7 @@ impl State {
             ret.write(RefCell::new(State {
                 magic1: MAGIC,
                 magic2: MAGIC,
-                import_realloc_behavior: RefCell::new(ImportReallocBehavior::Trap),
+                import_realloc_behavior: Cell::new(ImportReallocBehavior::Trap),
                 ndescriptors: Cell::new(0),
                 closed: None,
                 descriptors: UnsafeCell::new(MaybeUninit::uninit()),
