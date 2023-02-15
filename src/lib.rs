@@ -150,8 +150,40 @@ pub unsafe extern "C" fn cabi_import_realloc(
     ptr
 }
 
-fn align_to(ptr: usize, align: usize) -> usize {
-    (ptr + (align - 1)) & !(align - 1)
+/// Tracks the state of a memory arena used as a bump allocator.
+///
+/// Note that this does not contain a pointer to the start of the arena, but
+/// instead that pointer is passed to `BumpArena::alloc`. This is because the
+/// `State::long_lived_data` memory area is a member of the same struct as
+/// the `State::long_lived_arena` BumpArena used to track its state, so we
+/// can't construct the BumpArena with a non-moving pointer to the memory.
+struct BumpArena {
+    len: usize,
+    position: Cell<usize>,
+}
+
+impl BumpArena {
+    fn new(len: usize) -> Self {
+        BumpArena {
+            len,
+            position: Cell::new(0),
+        }
+    }
+    fn alloc(&self, start: *mut u8, align: usize, size: usize) -> *mut u8 {
+        let start = start as usize;
+        let next = start + self.position.get();
+        let alloc = Self::align_to(next, align);
+        let offset = alloc - start;
+        if offset + size > self.len {
+            unreachable!("out of memory");
+        }
+        self.position.set(offset + size);
+        unsafe { alloc as *mut u8 }
+    }
+
+    fn align_to(ptr: usize, align: usize) -> usize {
+        (ptr + (align - 1)) & !(align - 1)
+    }
 }
 
 /// This allocator is only used for the `command` entrypoint.
@@ -173,21 +205,8 @@ pub unsafe extern "C" fn cabi_export_realloc(
     }
     let mut ret = null_mut::<u8>();
     State::with_mut(|state| {
-        let data = state.command_data.as_mut_ptr();
-        let ptr = align_to(
-            usize::try_from(state.command_data_next).trapping_unwrap(),
-            align,
-        );
-
-        // "oom" as too much argument data tried to flow into the component.
-        // Ideally this would have a better error message?
-        if ptr + new_size > (*data).len() {
-            unreachable!("out of memory");
-        }
-        state.command_data_next = (ptr + new_size)
-            .try_into()
-            .unwrap_or_else(|_| unreachable!());
-        ret = (*data).as_mut_ptr().add(ptr);
+        let data = state.long_lived_data.as_mut_ptr() as *mut u8;
+        ret = state.long_lived_arena.alloc(data, align, new_size);
         Ok(())
     });
     ret
@@ -2152,11 +2171,11 @@ struct State {
     path_buf: UnsafeCell<MaybeUninit<[u8; PATH_MAX]>>,
 
     /// Storage area for data passed to the `command` entrypoint. The
-    /// `command_data` is a block of memory which is dynamically allocated from
-    /// in `cabi_export_realloc`. The `command_data_next` is the
-    /// bump-allocated-pointer of where to allocate from next.
-    command_data: MaybeUninit<[u8; command_data_size()]>,
-    command_data_next: u16,
+    /// `long_lived_data` is a block of memory which is dynamically allocated from
+    /// in `cabi_export_realloc`. The `long_lived_arena` manages the bump allocations
+    /// inside this data.
+    long_lived_data: MaybeUninit<[u8; command_data_size()]>,
+    long_lived_arena: BumpArena,
 
     /// Arguments passed to the `command` entrypoint
     args: Option<&'static [WasmStr]>,
@@ -2240,7 +2259,7 @@ const fn command_data_size() -> usize {
     start -= size_of::<DirentCache>();
 
     // Remove miscellaneous metadata also stored in state.
-    start -= 21 * size_of::<usize>();
+    start -= 22 * size_of::<usize>();
 
     // Everything else is the `command_data` allocation.
     start
@@ -2347,8 +2366,8 @@ impl State {
                 closed: None,
                 descriptors: MaybeUninit::uninit(),
                 path_buf: UnsafeCell::new(MaybeUninit::uninit()),
-                command_data: MaybeUninit::uninit(),
-                command_data_next: 0,
+                long_lived_data: MaybeUninit::uninit(),
+                long_lived_arena: BumpArena::new(command_data_size()),
                 args: None,
                 env_vars: None,
                 preopens: None,
