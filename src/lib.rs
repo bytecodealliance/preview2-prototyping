@@ -169,7 +169,7 @@ impl BumpArena {
     fn alloc(&self, start: *mut u8, align: usize, size: usize) -> *mut u8 {
         let start = start as usize;
         let next = start + self.position.get();
-        let alloc = Self::align_to(next, align);
+        let alloc = align_to(next, align);
         let offset = alloc - start;
         if offset + size > self.len.get() {
             unreachable!("out of memory");
@@ -177,22 +177,21 @@ impl BumpArena {
         self.position.set(offset + size);
         alloc as *mut u8
     }
-
-    fn align_to(ptr: usize, align: usize) -> usize {
-        (ptr + (align - 1)) & !(align - 1)
-    }
+}
+fn align_to(ptr: usize, align: usize) -> usize {
+    (ptr + (align - 1)) & !(align - 1)
 }
 
 struct ImportAlloc {
     buffer: Cell<*mut u8>,
-    arena: BumpArena,
+    len: Cell<usize>,
 }
 
 impl ImportAlloc {
     fn new() -> Self {
         ImportAlloc {
             buffer: Cell::new(std::ptr::null_mut()),
-            arena: BumpArena::new(0),
+            len: Cell::new(0),
         }
     }
 
@@ -201,7 +200,7 @@ impl ImportAlloc {
         if !prev.is_null() {
             unreachable!()
         }
-        self.arena.reset(len);
+        self.len.set(len);
         let r = f();
         self.buffer.set(std::ptr::null_mut());
         r
@@ -210,9 +209,17 @@ impl ImportAlloc {
     fn alloc(&self, align: usize, size: usize) -> *mut u8 {
         let buffer = self.buffer.get();
         if buffer.is_null() {
-            unreachable!()
+            unreachable!("buffer not provided, or already used")
         }
-        self.arena.alloc(buffer, align, size)
+        let buffer = buffer as usize;
+        let alloc = align_to(buffer, align);
+        if alloc.checked_add(size).trapping_unwrap()
+            > buffer.checked_add(self.len.get()).trapping_unwrap()
+        {
+            unreachable!("out of memory")
+        }
+        self.buffer.set(std::ptr::null_mut());
+        alloc as *mut u8
     }
 }
 
@@ -2306,7 +2313,7 @@ const fn command_data_size() -> usize {
     start -= size_of::<DirentCache>();
 
     // Remove miscellaneous metadata also stored in state.
-    start -= 24 * size_of::<usize>();
+    start -= 22 * size_of::<usize>();
 
     // Everything else is the `command_data` allocation.
     start
