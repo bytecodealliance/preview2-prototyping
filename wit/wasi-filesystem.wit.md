@@ -349,6 +349,19 @@ enum advice {
 type descriptor = u32
 ```
 
+## `get-preopens`
+```wit
+/// Get preopened file descriptors.
+///
+/// Provided by the environment as a pair of a path name and a descriptor
+/// of a directory.
+///
+/// Morally, these are a value import, but until value imports are available
+/// in the component model, this import function should be called at most
+/// once, and subsequent calls should trap.
+get-preopens: func() -> list<tuple<descriptor, string>>
+```
+
 ## `read-via-stream`
 ```wit
 /// Return a stream for reading from a file.
