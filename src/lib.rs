@@ -144,35 +144,26 @@ pub unsafe extern "C" fn cabi_import_realloc(
     ptr
 }
 
-/// Tracks the state of a memory arena used as a bump allocator.
-///
-/// Note that this does not contain a pointer to the start of the arena, but
-/// instead that pointer is passed to `BumpArena::alloc`. This is because the
-/// `State::long_lived_data` memory area is a member of the same struct as
-/// the `State::long_lived_arena` BumpArena used to track its state, so we
-/// can't construct the BumpArena with a non-moving pointer to the memory.
+/// Bump-allocated memory arena. This is a singleton - the
+/// memory will be sized according to `bump_arena_size()`.
 struct BumpArena {
-    len: Cell<usize>,
+    data: MaybeUninit<[u8; bump_arena_size()]>,
     position: Cell<usize>,
 }
 
 impl BumpArena {
-    fn new(len: usize) -> Self {
+    fn new() -> Self {
         BumpArena {
-            len: Cell::new(len),
+            data: MaybeUninit::uninit(),
             position: Cell::new(0),
         }
     }
-    fn reset(&self, len: usize) {
-        self.len.set(len);
-        self.position.set(0);
-    }
-    fn alloc(&self, start: *mut u8, align: usize, size: usize) -> *mut u8 {
-        let start = start as usize;
+    fn alloc(&self, align: usize, size: usize) -> *mut u8 {
+        let start = self.data.as_ptr() as usize;
         let next = start + self.position.get();
         let alloc = align_to(next, align);
         let offset = alloc - start;
-        if offset + size > self.len.get() {
+        if offset + size > bump_arena_size() {
             unreachable!("out of memory");
         }
         self.position.set(offset + size);
@@ -243,8 +234,7 @@ pub unsafe extern "C" fn cabi_export_realloc(
     }
     let mut ret = null_mut::<u8>();
     State::with_mut(|state| {
-        let data = state.long_lived_data.as_mut_ptr() as *mut u8;
-        ret = state.long_lived_arena.alloc(data, align, new_size);
+        ret = state.long_lived_arena.alloc(align, new_size);
         Ok(())
     });
     ret
@@ -2221,11 +2211,11 @@ struct State {
     /// Auxiliary storage to handle the `path_readlink` function.
     path_buf: UnsafeCell<MaybeUninit<[u8; PATH_MAX]>>,
 
-    /// Storage area for data passed to the `command` entrypoint. The
-    /// `long_lived_data` is a block of memory which is dynamically allocated from
-    /// in `cabi_export_realloc`. The `long_lived_arena` manages the bump allocations
-    /// inside this data.
-    long_lived_data: MaybeUninit<[u8; command_data_size()]>,
+    /// Long-lived bump allocated memory arena.
+    ///
+    /// This is used for the cabi_export_realloc to allocate data passed to the
+    /// `command` entrypoint. Allocations in this arena are safe to use for
+    /// the lifetime of the State struct.
     long_lived_arena: BumpArena,
 
     /// Arguments passed to the `command` entrypoint
@@ -2299,7 +2289,7 @@ pub struct PreopenList {
     len: usize,
 }
 
-const fn command_data_size() -> usize {
+const fn bump_arena_size() -> usize {
     // The total size of the struct should be a page, so start there
     let mut start = PAGE_SIZE;
 
@@ -2416,8 +2406,7 @@ impl State {
                 closed: None,
                 descriptors: MaybeUninit::uninit(),
                 path_buf: UnsafeCell::new(MaybeUninit::uninit()),
-                long_lived_data: MaybeUninit::uninit(),
-                long_lived_arena: BumpArena::new(command_data_size()),
+                long_lived_arena: BumpArena::new(),
                 args: None,
                 env_vars: None,
                 preopens: None,
