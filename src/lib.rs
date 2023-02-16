@@ -1598,258 +1598,255 @@ pub unsafe extern "C" fn poll_oneoff(
     State::with(|state| {
         // FIXME, this is not enough space anymore, since many allocations are
         // being given out in this region
+        /*
         state.import_alloc.with_buffer(
             results,
             nsubscriptions
                 .checked_mul(size_of::<bool>())
                 .trapping_unwrap(),
             || {
-                let mut pollables = Pollables {
-                    pointer: pollables,
-                    index: 0,
-                    length: nsubscriptions,
-                };
+        */
+        let mut pollables = Pollables {
+            pointer: pollables,
+            index: 0,
+            length: nsubscriptions,
+        };
 
-                for subscription in subscriptions {
-                    const EVENTTYPE_CLOCK: u8 = wasi::EVENTTYPE_CLOCK.raw();
-                    const EVENTTYPE_FD_READ: u8 = wasi::EVENTTYPE_FD_READ.raw();
-                    const EVENTTYPE_FD_WRITE: u8 = wasi::EVENTTYPE_FD_WRITE.raw();
-                    pollables.push(match subscription.u.tag {
-                        EVENTTYPE_CLOCK => {
-                            let clock = &subscription.u.u.clock;
-                            let absolute = (clock.flags & SUBCLOCKFLAGS_SUBSCRIPTION_CLOCK_ABSTIME)
-                                == SUBCLOCKFLAGS_SUBSCRIPTION_CLOCK_ABSTIME;
-                            match clock.id {
-                                CLOCKID_REALTIME => {
-                                    let timeout = if absolute {
-                                        // Convert `clock.timeout` to `Datetime`.
-                                        let mut datetime = wasi_clocks::Datetime {
-                                            seconds: clock.timeout / 1_000_000_000,
-                                            nanoseconds: (clock.timeout % 1_000_000_000) as _,
-                                        };
+        for subscription in subscriptions {
+            const EVENTTYPE_CLOCK: u8 = wasi::EVENTTYPE_CLOCK.raw();
+            const EVENTTYPE_FD_READ: u8 = wasi::EVENTTYPE_FD_READ.raw();
+            const EVENTTYPE_FD_WRITE: u8 = wasi::EVENTTYPE_FD_WRITE.raw();
+            pollables.push(match subscription.u.tag {
+                EVENTTYPE_CLOCK => {
+                    let clock = &subscription.u.u.clock;
+                    let absolute = (clock.flags & SUBCLOCKFLAGS_SUBSCRIPTION_CLOCK_ABSTIME)
+                        == SUBCLOCKFLAGS_SUBSCRIPTION_CLOCK_ABSTIME;
+                    match clock.id {
+                        CLOCKID_REALTIME => {
+                            let timeout = if absolute {
+                                // Convert `clock.timeout` to `Datetime`.
+                                let mut datetime = wasi_clocks::Datetime {
+                                    seconds: clock.timeout / 1_000_000_000,
+                                    nanoseconds: (clock.timeout % 1_000_000_000) as _,
+                                };
 
-                                        // Subtract `now`.
-                                        let now =
-                                            wasi_clocks::wall_clock_now(state.default_wall_clock());
-                                        datetime.seconds -= now.seconds;
-                                        if datetime.nanoseconds < now.nanoseconds {
-                                            datetime.seconds -= 1;
-                                            datetime.nanoseconds += 1_000_000_000;
-                                        }
-                                        datetime.nanoseconds -= now.nanoseconds;
-
-                                        // Convert to nanoseconds.
-                                        let nanos = datetime
-                                            .seconds
-                                            .checked_mul(1_000_000_000)
-                                            .ok_or(ERRNO_OVERFLOW)?;
-                                        nanos
-                                            .checked_add(datetime.nanoseconds.into())
-                                            .ok_or(ERRNO_OVERFLOW)?
-                                    } else {
-                                        clock.timeout
-                                    };
-
-                                    wasi_poll::subscribe_monotonic_clock(
-                                        state.default_monotonic_clock(),
-                                        timeout,
-                                        false,
-                                    )
+                                // Subtract `now`.
+                                let now = wasi_clocks::wall_clock_now(state.default_wall_clock());
+                                datetime.seconds -= now.seconds;
+                                if datetime.nanoseconds < now.nanoseconds {
+                                    datetime.seconds -= 1;
+                                    datetime.nanoseconds += 1_000_000_000;
                                 }
+                                datetime.nanoseconds -= now.nanoseconds;
 
-                                CLOCKID_MONOTONIC => wasi_poll::subscribe_monotonic_clock(
-                                    state.default_monotonic_clock(),
-                                    clock.timeout,
-                                    absolute,
-                                ),
+                                // Convert to nanoseconds.
+                                let nanos = datetime
+                                    .seconds
+                                    .checked_mul(1_000_000_000)
+                                    .ok_or(ERRNO_OVERFLOW)?;
+                                nanos
+                                    .checked_add(datetime.nanoseconds.into())
+                                    .ok_or(ERRNO_OVERFLOW)?
+                            } else {
+                                clock.timeout
+                            };
 
-                                _ => return Err(ERRNO_INVAL),
-                            }
+                            wasi_poll::subscribe_monotonic_clock(
+                                state.default_monotonic_clock(),
+                                timeout,
+                                false,
+                            )
                         }
 
-                        EVENTTYPE_FD_READ => {
-                            match state.get_read_stream(subscription.u.u.fd_read.file_descriptor) {
-                                Ok(stream) => wasi_poll::subscribe_read(stream),
-                                // If the file descriptor isn't a stream, request a
-                                // pollable which completes immediately so that it'll
-                                // immediately fail.
-                                Err(ERRNO_BADF) => wasi_poll::subscribe_monotonic_clock(
-                                    state.default_monotonic_clock(),
-                                    0,
-                                    false,
-                                ),
-                                Err(e) => return Err(e),
-                            }
-                        }
-
-                        EVENTTYPE_FD_WRITE => {
-                            match state.get_write_stream(subscription.u.u.fd_write.file_descriptor)
-                            {
-                                Ok(stream) => wasi_poll::subscribe_write(stream),
-                                // If the file descriptor isn't a stream, request a
-                                // pollable which completes immediately so that it'll
-                                // immediately fail.
-                                Err(ERRNO_BADF) => wasi_poll::subscribe_monotonic_clock(
-                                    state.default_monotonic_clock(),
-                                    0,
-                                    false,
-                                ),
-                                Err(e) => return Err(e),
-                            }
-                        }
+                        CLOCKID_MONOTONIC => wasi_poll::subscribe_monotonic_clock(
+                            state.default_monotonic_clock(),
+                            clock.timeout,
+                            absolute,
+                        ),
 
                         _ => return Err(ERRNO_INVAL),
-                    });
+                    }
                 }
 
-                let vec = wasi_poll::poll_oneoff(slice::from_raw_parts(
-                    pollables.pointer,
-                    pollables.length,
-                ));
+                EVENTTYPE_FD_READ => {
+                    match state.get_read_stream(subscription.u.u.fd_read.file_descriptor) {
+                        Ok(stream) => wasi_poll::subscribe_read(stream),
+                        // If the file descriptor isn't a stream, request a
+                        // pollable which completes immediately so that it'll
+                        // immediately fail.
+                        Err(ERRNO_BADF) => wasi_poll::subscribe_monotonic_clock(
+                            state.default_monotonic_clock(),
+                            0,
+                            false,
+                        ),
+                        Err(e) => return Err(e),
+                    }
+                }
 
-                assert_eq!(vec.len(), nsubscriptions);
-                assert_eq!(vec.as_ptr(), results);
-                forget(vec);
+                EVENTTYPE_FD_WRITE => {
+                    match state.get_write_stream(subscription.u.u.fd_write.file_descriptor) {
+                        Ok(stream) => wasi_poll::subscribe_write(stream),
+                        // If the file descriptor isn't a stream, request a
+                        // pollable which completes immediately so that it'll
+                        // immediately fail.
+                        Err(ERRNO_BADF) => wasi_poll::subscribe_monotonic_clock(
+                            state.default_monotonic_clock(),
+                            0,
+                            false,
+                        ),
+                        Err(e) => return Err(e),
+                    }
+                }
 
-                drop(pollables);
+                _ => return Err(ERRNO_INVAL),
+            });
+        }
 
-                let ready = subscriptions
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(i, s)| (*results.add(i) != 0).then_some(s));
+        let vec =
+            wasi_poll::poll_oneoff(slice::from_raw_parts(pollables.pointer, pollables.length));
 
-                let mut count = 0;
+        assert_eq!(vec.len(), nsubscriptions);
+        assert_eq!(vec.as_ptr(), results);
+        forget(vec);
 
-                for subscription in ready {
-                    let error;
-                    let type_;
-                    let nbytes;
-                    let flags;
+        drop(pollables);
 
-                    match subscription.u.tag {
-                        0 => {
-                            error = ERRNO_SUCCESS;
-                            type_ = EVENTTYPE_CLOCK;
-                            nbytes = 0;
-                            flags = 0;
-                        }
+        let ready = subscriptions
+            .iter()
+            .enumerate()
+            .filter_map(|(i, s)| (*results.add(i) != 0).then_some(s));
 
-                        1 => {
-                            type_ = EVENTTYPE_FD_READ;
-                            let desc = state
-                                .get(subscription.u.u.fd_read.file_descriptor)
-                                .trapping_unwrap();
-                            match desc {
-                                Descriptor::Streams(streams) => match &streams.type_ {
-                                    StreamType::File(file) => {
-                                        match wasi_filesystem::stat(file.fd) {
-                                            Ok(stat) => {
-                                                error = ERRNO_SUCCESS;
-                                                nbytes =
-                                                    stat.size.saturating_sub(file.position.get());
-                                                flags = if nbytes == 0 {
-                                                    EVENTRWFLAGS_FD_READWRITE_HANGUP
-                                                } else {
-                                                    0
-                                                };
-                                            }
-                                            Err(e) => {
-                                                error = e.into();
-                                                nbytes = 1;
-                                                flags = 0;
-                                            }
-                                        }
-                                    }
-                                    StreamType::Socket(connection) => {
-                                        match wasi_tcp::bytes_readable(*connection) {
-                                            Ok(result) => {
-                                                error = ERRNO_SUCCESS;
-                                                nbytes = result.0;
-                                                flags = if result.1 {
-                                                    EVENTRWFLAGS_FD_READWRITE_HANGUP
-                                                } else {
-                                                    0
-                                                };
-                                            }
-                                            Err(e) => {
-                                                error = e.into();
-                                                nbytes = 0;
-                                                flags = 0;
-                                            }
-                                        }
-                                    }
-                                    StreamType::EmptyStdin => {
+        let mut count = 0;
+
+        for subscription in ready {
+            let error;
+            let type_;
+            let nbytes;
+            let flags;
+
+            match subscription.u.tag {
+                0 => {
+                    error = ERRNO_SUCCESS;
+                    type_ = EVENTTYPE_CLOCK;
+                    nbytes = 0;
+                    flags = 0;
+                }
+
+                1 => {
+                    type_ = EVENTTYPE_FD_READ;
+                    let desc = state
+                        .get(subscription.u.u.fd_read.file_descriptor)
+                        .trapping_unwrap();
+                    match desc {
+                        Descriptor::Streams(streams) => match &streams.type_ {
+                            StreamType::File(file) => match wasi_filesystem::stat(file.fd) {
+                                Ok(stat) => {
+                                    error = ERRNO_SUCCESS;
+                                    nbytes = stat.size.saturating_sub(file.position.get());
+                                    flags = if nbytes == 0 {
+                                        EVENTRWFLAGS_FD_READWRITE_HANGUP
+                                    } else {
+                                        0
+                                    };
+                                }
+                                Err(e) => {
+                                    error = e.into();
+                                    nbytes = 1;
+                                    flags = 0;
+                                }
+                            },
+                            StreamType::Socket(connection) => {
+                                match wasi_tcp::bytes_readable(*connection) {
+                                    Ok(result) => {
                                         error = ERRNO_SUCCESS;
-                                        nbytes = 0;
-                                        flags = EVENTRWFLAGS_FD_READWRITE_HANGUP;
+                                        nbytes = result.0;
+                                        flags = if result.1 {
+                                            EVENTRWFLAGS_FD_READWRITE_HANGUP
+                                        } else {
+                                            0
+                                        };
                                     }
-                                    StreamType::Unknown => {
-                                        error = ERRNO_SUCCESS;
-                                        nbytes = 1;
-                                        flags = 0;
-                                    }
-                                },
-                                _ => unreachable!(),
-                            }
-                        }
-                        2 => {
-                            type_ = EVENTTYPE_FD_WRITE;
-                            let desc = state
-                                .get(subscription.u.u.fd_read.file_descriptor)
-                                .trapping_unwrap();
-                            match desc {
-                                Descriptor::Streams(streams) => match streams.type_ {
-                                    StreamType::File(_) | StreamType::Unknown => {
-                                        error = ERRNO_SUCCESS;
-                                        nbytes = 1;
-                                        flags = 0;
-                                    }
-                                    StreamType::Socket(connection) => {
-                                        match wasi_tcp::bytes_writable(connection) {
-                                            Ok(result) => {
-                                                error = ERRNO_SUCCESS;
-                                                nbytes = result.0;
-                                                flags = if result.1 {
-                                                    EVENTRWFLAGS_FD_READWRITE_HANGUP
-                                                } else {
-                                                    0
-                                                };
-                                            }
-                                            Err(e) => {
-                                                error = e.into();
-                                                nbytes = 0;
-                                                flags = 0;
-                                            }
-                                        }
-                                    }
-                                    StreamType::EmptyStdin => {
-                                        error = ERRNO_BADF;
+                                    Err(e) => {
+                                        error = e.into();
                                         nbytes = 0;
                                         flags = 0;
                                     }
-                                },
-                                _ => unreachable!(),
+                                }
                             }
-                        }
-
+                            StreamType::EmptyStdin => {
+                                error = ERRNO_SUCCESS;
+                                nbytes = 0;
+                                flags = EVENTRWFLAGS_FD_READWRITE_HANGUP;
+                            }
+                            StreamType::Unknown => {
+                                error = ERRNO_SUCCESS;
+                                nbytes = 1;
+                                flags = 0;
+                            }
+                        },
                         _ => unreachable!(),
                     }
-
-                    *out.add(count) = Event {
-                        userdata: subscription.userdata,
-                        error,
-                        type_,
-                        fd_readwrite: EventFdReadwrite { nbytes, flags },
-                    };
-
-                    count += 1;
+                }
+                2 => {
+                    type_ = EVENTTYPE_FD_WRITE;
+                    let desc = state
+                        .get(subscription.u.u.fd_read.file_descriptor)
+                        .trapping_unwrap();
+                    match desc {
+                        Descriptor::Streams(streams) => match streams.type_ {
+                            StreamType::File(_) | StreamType::Unknown => {
+                                error = ERRNO_SUCCESS;
+                                nbytes = 1;
+                                flags = 0;
+                            }
+                            StreamType::Socket(connection) => {
+                                match wasi_tcp::bytes_writable(connection) {
+                                    Ok(result) => {
+                                        error = ERRNO_SUCCESS;
+                                        nbytes = result.0;
+                                        flags = if result.1 {
+                                            EVENTRWFLAGS_FD_READWRITE_HANGUP
+                                        } else {
+                                            0
+                                        };
+                                    }
+                                    Err(e) => {
+                                        error = e.into();
+                                        nbytes = 0;
+                                        flags = 0;
+                                    }
+                                }
+                            }
+                            StreamType::EmptyStdin => {
+                                error = ERRNO_BADF;
+                                nbytes = 0;
+                                flags = 0;
+                            }
+                        },
+                        _ => unreachable!(),
+                    }
                 }
 
-                *nevents = count;
+                _ => unreachable!(),
+            }
 
-                Ok(())
-            },
-        )
+            *out.add(count) = Event {
+                userdata: subscription.userdata,
+                error,
+                type_,
+                fd_readwrite: EventFdReadwrite { nbytes, flags },
+            };
+
+            count += 1;
+        }
+
+        *nevents = count;
+
+        Ok(())
+        /*
+         },
+             )
+        */
     })
 }
 
