@@ -13,4 +13,5 @@ default world wasi {
   import wasi-ip: pkg.wasi-ip
   import wasi-dns: pkg.wasi-dns
   import wasi-exit: pkg.wasi-exit
+  import wasi-environment: pkg.wasi-environment
 }
