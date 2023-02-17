@@ -99,7 +99,7 @@ impl WasiTcpSocket for TcpSocket {
     }
 
     async fn readable(&self) -> Result<(), Error> {
-        if is_read_write(&self.0)?.0 {
+        if is_read_write(&*self.0)?.0 {
             Ok(())
         } else {
             Err(Error::badf())
@@ -107,7 +107,7 @@ impl WasiTcpSocket for TcpSocket {
     }
 
     async fn writable(&self) -> Result<(), Error> {
-        if is_read_write(&self.0)?.1 {
+        if is_read_write(&*self.0)?.1 {
             Ok(())
         } else {
             Err(Error::badf())
@@ -139,7 +139,7 @@ impl WasiUdpSocket for UdpSocket {
 
         if ri_flags.contains(RiFlags::RECV_PEEK) {
             if let Some(first) = ri_data.iter_mut().next() {
-                let n = self.0.peek(first)?;
+                let n = self.0.as_socketlike_view::<TcpStream>().peek(first)?;
                 return Ok((n as u64, RoFlags::empty()));
             } else {
                 return Ok((0, RoFlags::empty()));
@@ -148,21 +148,29 @@ impl WasiUdpSocket for UdpSocket {
 
         if ri_flags.contains(RiFlags::RECV_WAITALL) {
             let n: usize = ri_data.iter().map(|buf| buf.len()).sum();
-            self.0.read_exact_vectored(ri_data)?;
+            self.0
+                .as_socketlike_view::<TcpStream>()
+                .read_exact_vectored(ri_data)?;
             return Ok((n as u64, RoFlags::empty()));
         }
 
-        let n = self.0.read_vectored(ri_data)?;
+        let n = self
+            .0
+            .as_socketlike_view::<TcpStream>()
+            .read_vectored(ri_data)?;
         Ok((n as u64, RoFlags::empty()))
     }
 
     async fn sock_send<'a>(&mut self, si_data: &[io::IoSlice<'a>]) -> Result<u64, Error> {
-        let n = self.0.write_vectored(si_data)?;
+        let n = self
+            .0
+            .as_socketlike_view::<TcpStream>()
+            .write_vectored(si_data)?;
         Ok(n as u64)
     }
 
     async fn readable(&self) -> Result<(), Error> {
-        if is_read_write(&self.0)?.0 {
+        if is_read_write(&*self.0)?.0 {
             Ok(())
         } else {
             Err(Error::badf())
@@ -170,7 +178,7 @@ impl WasiUdpSocket for UdpSocket {
     }
 
     async fn writable(&self) -> Result<(), Error> {
-        if is_read_write(&self.0)?.1 {
+        if is_read_write(&*self.0)?.1 {
             Ok(())
         } else {
             Err(Error::badf())
@@ -190,7 +198,7 @@ impl InputStream for TcpSocket {
 
     #[cfg(windows)]
     fn pollable_read(&self) -> Option<io_extras::os::windows::BorrowedHandleOrSocket> {
-        Some(self.0.as_handle_or_socket())
+        Some(BorrowedHandleOrSocket::from_socket(self.0.as_socket()))
     }
 
     async fn read(&mut self, buf: &mut [u8]) -> Result<(u64, bool), Error> {
@@ -231,7 +239,7 @@ impl InputStream for TcpSocket {
     }
 
     async fn readable(&self) -> Result<(), Error> {
-        if is_read_write(&self.0)?.0 {
+        if is_read_write(&*self.0)?.0 {
             Ok(())
         } else {
             Err(Error::badf())
@@ -252,7 +260,7 @@ impl OutputStream for TcpSocket {
 
     #[cfg(windows)]
     fn pollable_write(&self) -> Option<io_extras::os::windows::BorrowedHandleOrSocket> {
-        Some(self.0.as_handle_or_socket())
+        Some(BorrowedHandleOrSocket::from_socket(self.0.as_socket()))
     }
 
     async fn write(&mut self, buf: &[u8]) -> Result<u64, Error> {
@@ -290,7 +298,7 @@ impl OutputStream for TcpSocket {
         Ok(num)
     }
     async fn writable(&self) -> Result<(), Error> {
-        if is_read_write(&self.0)?.1 {
+        if is_read_write(&*self.0)?.1 {
             Ok(())
         } else {
             Err(Error::badf())
@@ -324,7 +332,7 @@ impl AsSocket for TcpSocket {
 impl AsHandleOrSocket for TcpSocket {
     #[inline]
     fn as_handle_or_socket(&self) -> BorrowedHandleOrSocket {
-        self.0.as_handle_or_socket()
+        BorrowedHandleOrSocket::from_socket(self.0.as_socket())
     }
 }
 #[cfg(windows)]
@@ -339,7 +347,7 @@ impl AsSocket for UdpSocket {
 impl AsHandleOrSocket for UdpSocket {
     #[inline]
     fn as_handle_or_socket(&self) -> BorrowedHandleOrSocket {
-        self.0.as_handle_or_socket()
+        BorrowedHandleOrSocket::from_socket(self.0.as_socket())
     }
 }
 
