@@ -1,8 +1,8 @@
 #![allow(unused_variables)] // TODO: remove this when more things are implemented
 
 use crate::bindings::{
-    wasi_clocks, wasi_default_clocks, wasi_exit, wasi_filesystem, wasi_io, wasi_poll, wasi_random,
-    wasi_stderr, wasi_tcp,
+    wasi_default_clocks, wasi_exit, wasi_filesystem, wasi_io, wasi_monotonic_clock, wasi_poll,
+    wasi_random, wasi_stderr, wasi_tcp, wasi_wall_clock,
 };
 use core::arch::wasm32;
 use core::cell::{Cell, RefCell, UnsafeCell};
@@ -13,7 +13,8 @@ use core::mem::{self, align_of, forget, replace, size_of, ManuallyDrop, MaybeUni
 use core::ptr::{self, null_mut};
 use core::slice;
 use wasi::*;
-use wasi_poll::{InputStream, OutputStream, Pollable};
+use wasi_io::{InputStream, OutputStream};
+use wasi_poll::Pollable;
 
 #[macro_use]
 mod macros;
@@ -27,7 +28,7 @@ mod bindings {
         unchecked,
         // The generated definition of command will pull in std, so we are defining it
         // manually below instead
-        skip: ["command"],
+        skip: ["command", "get-preopens", "get-environment"],
     });
 
     #[cfg(not(feature = "command"))]
@@ -36,6 +37,7 @@ mod bindings {
         no_std,
         raw_strings,
         unchecked,
+        skip: ["get-preopens", "get-environment"],
     });
 }
 
@@ -46,8 +48,6 @@ pub unsafe extern "C" fn command(
     stdout: OutputStream,
     args_ptr: *const WasmStr,
     args_len: usize,
-    env_vars: StrTupleList,
-    preopens: PreopenList,
 ) -> u32 {
     State::with_mut(|state| {
         // Initialization of `State` automatically fills in some dummy
@@ -70,22 +70,6 @@ pub unsafe extern "C" fn command(
             });
         }
         state.args = Some(slice::from_raw_parts(args_ptr, args_len));
-        state.env_vars = Some(slice::from_raw_parts(env_vars.base, env_vars.len));
-
-        let preopens = slice::from_raw_parts(preopens.base, preopens.len);
-        state.preopens = Some(preopens);
-
-        for preopen in preopens {
-            unwrap_result(state.push_desc(Descriptor::Streams(Streams {
-                input: Cell::new(None),
-                output: Cell::new(None),
-                type_: StreamType::File(File {
-                    fd: preopen.descriptor,
-                    position: Cell::new(0),
-                    append: false,
-                }),
-            })));
-        }
 
         Ok(())
     });
@@ -98,19 +82,28 @@ pub unsafe extern "C" fn command(
     0
 }
 
-fn unwrap<T>(maybe: Option<T>) -> T {
-    if let Some(value) = maybe {
-        value
-    } else {
-        unreachable!("unwrap failed")
+// The unwrap/expect methods in std pull panic when they fail, which pulls
+// in unwinding machinery that we can't use in the adapter. Instead, use this
+// extension trait to get postfixed upwrap on Option and Result.
+trait TrappingUnwrap<T> {
+    fn trapping_unwrap(self) -> T;
+}
+
+impl<T> TrappingUnwrap<T> for Option<T> {
+    fn trapping_unwrap(self) -> T {
+        match self {
+            Some(t) => t,
+            None => unreachable!(),
+        }
     }
 }
 
-fn unwrap_result<T, E>(result: Result<T, E>) -> T {
-    if let Ok(value) = result {
-        value
-    } else {
-        unreachable!("unwrap result failed")
+impl<T, E> TrappingUnwrap<T> for Result<T, E> {
+    fn trapping_unwrap(self) -> T {
+        match self {
+            Ok(t) => t,
+            Err(_) => unreachable!(),
+        }
     }
 }
 
@@ -118,7 +111,7 @@ fn unwrap_result<T, E>(result: Result<T, E>) -> T {
 pub unsafe extern "C" fn cabi_import_realloc(
     old_ptr: *mut u8,
     old_size: usize,
-    _align: usize,
+    align: usize,
     new_size: usize,
 ) -> *mut u8 {
     if !old_ptr.is_null() || old_size != 0 {
@@ -126,21 +119,121 @@ pub unsafe extern "C" fn cabi_import_realloc(
     }
     let mut ptr = null_mut::<u8>();
     State::with(|state| {
-        ptr = state.buffer_ptr.replace(null_mut());
-        if ptr.is_null() {
-            unreachable!();
-        }
-        let len = state.buffer_len.replace(0);
-        if len < new_size {
-            unreachable!();
-        }
+        ptr = state.import_alloc.alloc(align, new_size);
         Ok(())
     });
     ptr
 }
 
+/// Bump-allocated memory arena. This is a singleton - the
+/// memory will be sized according to `bump_arena_size()`.
+struct BumpArena {
+    data: MaybeUninit<[u8; bump_arena_size()]>,
+    position: Cell<usize>,
+}
+
+impl BumpArena {
+    fn new() -> Self {
+        BumpArena {
+            data: MaybeUninit::uninit(),
+            position: Cell::new(0),
+        }
+    }
+    fn alloc(&self, align: usize, size: usize) -> *mut u8 {
+        let start = self.data.as_ptr() as usize;
+        let next = start + self.position.get();
+        let alloc = align_to(next, align);
+        let offset = alloc - start;
+        if offset + size > bump_arena_size() {
+            unreachable!("out of memory");
+        }
+        self.position.set(offset + size);
+        alloc as *mut u8
+    }
+}
 fn align_to(ptr: usize, align: usize) -> usize {
     (ptr + (align - 1)) & !(align - 1)
+}
+
+// Invariant: buffer not-null and arena is-some are never true at the same
+// time. We did not use an enum to make this invalid behavior unrepresentable
+// because we can't use RefCell to borrow() the variants of the enum - only
+// Cell provides mutability without pulling in panic machinery - so it would
+// make the accessors a lot more awkward to write.
+struct ImportAlloc {
+    // When not-null, allocator should use this buffer/len pair at most once
+    // to satisfy allocations.
+    buffer: Cell<*mut u8>,
+    len: Cell<usize>,
+    // When not-empty, allocator should use this arena to satisfy allocations.
+    arena: Cell<Option<&'static BumpArena>>,
+}
+
+impl ImportAlloc {
+    fn new() -> Self {
+        ImportAlloc {
+            buffer: Cell::new(std::ptr::null_mut()),
+            len: Cell::new(0),
+            arena: Cell::new(None),
+        }
+    }
+
+    /// Expect at most one import allocation during execution of the provided closure.
+    /// Use the provided buffer to satisfy that import allocation. The user is responsible
+    /// for making sure allocated imports are not used beyond the lifetime of the buffer.
+    fn with_buffer<T>(&self, buffer: *mut u8, len: usize, f: impl FnOnce() -> T) -> T {
+        if self.arena.get().is_some() {
+            unreachable!("arena mode")
+        }
+        let prev = self.buffer.replace(buffer);
+        if !prev.is_null() {
+            unreachable!("overwrote another buffer")
+        }
+        self.len.set(len);
+        let r = f();
+        self.buffer.set(std::ptr::null_mut());
+        r
+    }
+
+    /// Permit many import allocations during execution of the provided closure.
+    /// Use the provided BumpArena to satisfry those allocations. The user is responsible
+    /// for making sure allocated imports are not used beyond the lifetime of the arena.
+    fn with_arena<T>(&self, arena: &BumpArena, f: impl FnOnce() -> T) -> T {
+        if !self.buffer.get().is_null() {
+            unreachable!("buffer mode")
+        }
+        let prev = self.arena.replace(Some(unsafe {
+            // Safety: Need to erase the lifetime to store in the arena cell.
+            std::mem::transmute::<&'_ BumpArena, &'static BumpArena>(arena)
+        }));
+        if prev.is_some() {
+            unreachable!("overwrote another arena")
+        }
+        let r = f();
+        self.arena.set(None);
+        r
+    }
+
+    /// To be used by cabi_import_realloc only!
+    fn alloc(&self, align: usize, size: usize) -> *mut u8 {
+        if let Some(arena) = self.arena.get() {
+            arena.alloc(align, size)
+        } else {
+            let buffer = self.buffer.get();
+            if buffer.is_null() {
+                unreachable!("buffer not provided, or already used")
+            }
+            let buffer = buffer as usize;
+            let alloc = align_to(buffer, align);
+            if alloc.checked_add(size).trapping_unwrap()
+                > buffer.checked_add(self.len.get()).trapping_unwrap()
+            {
+                unreachable!("out of memory")
+            }
+            self.buffer.set(std::ptr::null_mut());
+            alloc as *mut u8
+        }
+    }
 }
 
 /// This allocator is only used for the `command` entrypoint.
@@ -162,21 +255,7 @@ pub unsafe extern "C" fn cabi_export_realloc(
     }
     let mut ret = null_mut::<u8>();
     State::with_mut(|state| {
-        let data = state.command_data.as_mut_ptr();
-        let ptr = align_to(
-            unwrap_result(usize::try_from(state.command_data_next)),
-            align,
-        );
-
-        // "oom" as too much argument data tried to flow into the component.
-        // Ideally this would have a better error message?
-        if ptr + new_size > (*data).len() {
-            unreachable!("out of memory");
-        }
-        state.command_data_next = (ptr + new_size)
-            .try_into()
-            .unwrap_or_else(|_| unreachable!());
-        ret = (*data).as_mut_ptr().add(ptr);
+        ret = state.long_lived_arena.alloc(align, new_size);
         Ok(())
     });
     ret
@@ -232,25 +311,23 @@ pub unsafe extern "C" fn args_sizes_get(argc: *mut Size, argv_buf_size: *mut Siz
 #[no_mangle]
 pub unsafe extern "C" fn environ_get(environ: *mut *mut u8, environ_buf: *mut u8) -> Errno {
     State::with(|state| {
-        if let Some(list) = state.env_vars {
-            let mut offsets = environ;
-            let mut buffer = environ_buf;
-            for pair in list {
-                ptr::write(offsets, buffer);
-                offsets = offsets.add(1);
+        let mut offsets = environ;
+        let mut buffer = environ_buf;
+        for var in state.get_environment() {
+            ptr::write(offsets, buffer);
+            offsets = offsets.add(1);
 
-                ptr::copy_nonoverlapping(pair.key.ptr, buffer, pair.key.len);
-                buffer = buffer.add(pair.key.len);
+            ptr::copy_nonoverlapping(var.key.ptr, buffer, var.key.len);
+            buffer = buffer.add(var.key.len);
 
-                ptr::write(buffer, b'=');
-                buffer = buffer.add(1);
+            ptr::write(buffer, b'=');
+            buffer = buffer.add(1);
 
-                ptr::copy_nonoverlapping(pair.value.ptr, buffer, pair.value.len);
-                buffer = buffer.add(pair.value.len);
+            ptr::copy_nonoverlapping(var.value.ptr, buffer, var.value.len);
+            buffer = buffer.add(var.value.len);
 
-                ptr::write(buffer, 0);
-                buffer = buffer.add(1);
-            }
+            ptr::write(buffer, 0);
+            buffer = buffer.add(1);
         }
 
         Ok(())
@@ -268,19 +345,15 @@ pub unsafe extern "C" fn environ_sizes_get(
         AllocationState::StackAllocated | AllocationState::StateAllocated
     ) {
         State::with(|state| {
-            if let Some(list) = state.env_vars {
-                *environc = list.len();
-                *environ_buf_size = {
-                    let mut sum = 0;
-                    for pair in list {
-                        sum += pair.key.len + pair.value.len + 2;
-                    }
-                    sum
-                };
-            } else {
-                *environc = 0;
-                *environ_buf_size = 0;
-            }
+            let vars = state.get_environment();
+            *environc = vars.len();
+            *environ_buf_size = {
+                let mut sum = 0;
+                for var in vars {
+                    sum += var.key.len + var.value.len + 2;
+                }
+                sum
+            };
 
             Ok(())
         })
@@ -300,11 +373,11 @@ pub extern "C" fn clock_res_get(id: Clockid, resolution: &mut Timestamp) -> Errn
     State::with(|state| {
         match id {
             CLOCKID_MONOTONIC => {
-                let res = wasi_clocks::monotonic_clock_resolution(state.default_monotonic_clock());
+                let res = wasi_monotonic_clock::resolution(state.default_monotonic_clock());
                 *resolution = res;
             }
             CLOCKID_REALTIME => {
-                let res = wasi_clocks::wall_clock_resolution(state.default_wall_clock());
+                let res = wasi_wall_clock::resolution(state.default_wall_clock());
                 *resolution = Timestamp::from(res.nanoseconds)
                     .checked_add(res.seconds)
                     .and_then(|secs| secs.checked_mul(1_000_000_000))
@@ -331,10 +404,10 @@ pub unsafe extern "C" fn clock_time_get(
         State::with(|state| {
             match id {
                 CLOCKID_MONOTONIC => {
-                    *time = wasi_clocks::monotonic_clock_now(state.default_monotonic_clock());
+                    *time = wasi_monotonic_clock::now(state.default_monotonic_clock());
                 }
                 CLOCKID_REALTIME => {
-                    let res = wasi_clocks::wall_clock_now(state.default_wall_clock());
+                    let res = wasi_wall_clock::now(state.default_wall_clock());
                     *time = Timestamp::from(res.nanoseconds)
                         .checked_add(res.seconds)
                         .and_then(|secs| secs.checked_mul(1_000_000_000))
@@ -652,11 +725,11 @@ pub unsafe extern "C" fn fd_pread(
     State::with(|state| {
         let ptr = (*iovs_ptr).buf;
         let len = (*iovs_ptr).buf_len;
-        state.register_buffer(ptr, len);
 
-        let read_len = unwrap_result(u32::try_from(len));
         let file = state.get_file(fd)?;
-        let (data, end) = wasi_filesystem::pread(file.fd, read_len, offset)?;
+        let (data, end) = state.import_alloc.with_buffer(ptr, len, || {
+            wasi_filesystem::pread(file.fd, len as u64, offset)
+        })?;
         assert_eq!(data.as_ptr(), ptr);
         assert!(data.len() <= len);
 
@@ -671,10 +744,6 @@ pub unsafe extern "C" fn fd_pread(
     })
 }
 
-fn get_preopen(state: &State, fd: Fd) -> Option<&Preopen> {
-    state.preopens?.get(fd.checked_sub(3)? as usize)
-}
-
 /// Return a description of the given preopened file descriptor.
 #[no_mangle]
 pub unsafe extern "C" fn fd_prestat_get(fd: Fd, buf: *mut Prestat) -> Errno {
@@ -683,7 +752,7 @@ pub unsafe extern "C" fn fd_prestat_get(fd: Fd, buf: *mut Prestat) -> Errno {
         AllocationState::StackAllocated | AllocationState::StateAllocated
     ) {
         State::with(|state| {
-            if let Some(preopen) = get_preopen(state, fd) {
+            if let Some(preopen) = state.get_preopen(fd) {
                 buf.write(Prestat {
                     tag: 0,
                     u: PrestatU {
@@ -707,7 +776,7 @@ pub unsafe extern "C" fn fd_prestat_get(fd: Fd, buf: *mut Prestat) -> Errno {
 #[no_mangle]
 pub unsafe extern "C" fn fd_prestat_dir_name(fd: Fd, path: *mut u8, path_len: Size) -> Errno {
     State::with(|state| {
-        if let Some(preopen) = get_preopen(state, fd) {
+        if let Some(preopen) = state.get_preopen(fd) {
             if preopen.path.len < path_len as usize {
                 Err(ERRNO_NAMETOOLONG)
             } else {
@@ -774,15 +843,16 @@ pub unsafe extern "C" fn fd_read(
     let len = (*iovs_ptr).buf_len;
 
     State::with(|state| {
-        state.register_buffer(ptr, len);
-
         match state.get(fd)? {
             Descriptor::Streams(streams) => {
                 let wasi_stream = streams.get_read_stream()?;
 
-                let read_len = unwrap_result(u64::try_from(len));
+                let read_len = u64::try_from(len).trapping_unwrap();
                 let wasi_stream = streams.get_read_stream()?;
-                let (data, end) = wasi_io::read(wasi_stream, read_len).map_err(|_| ERRNO_IO)?;
+                let (data, end) = state
+                    .import_alloc
+                    .with_buffer(ptr, len, || wasi_io::read(wasi_stream, read_len))
+                    .map_err(|_| ERRNO_IO)?;
 
                 assert_eq!(data.as_ptr(), ptr);
                 assert!(data.len() <= len);
@@ -970,9 +1040,12 @@ pub unsafe extern "C" fn fd_readdir(
                     Ok((dirent, buffer))
                 });
             }
-            self.state
-                .register_buffer(self.state.path_buf.get().cast(), PATH_MAX);
-            let entry = match wasi_filesystem::read_dir_entry(self.stream.0) {
+            let entry = self.state.import_alloc.with_buffer(
+                self.state.path_buf.get().cast(),
+                PATH_MAX,
+                || wasi_filesystem::read_dir_entry(self.stream.0),
+            );
+            let entry = match entry {
                 Ok(Some(entry)) => entry,
                 Ok(None) => return None,
                 Err(e) => return Some(Err(e.into())),
@@ -983,7 +1056,7 @@ pub unsafe extern "C" fn fd_readdir(
             let dirent = wasi::Dirent {
                 d_next: self.cookie,
                 d_ino: ino.unwrap_or(0),
-                d_namlen: unwrap_result(u32::try_from(name.len())),
+                d_namlen: u32::try_from(name.len()).trapping_unwrap(),
                 d_type: type_.into(),
             };
             // Extend the lifetime of `name` to the `self.state` lifetime for
@@ -1012,7 +1085,7 @@ pub unsafe extern "C" fn fd_renumber(fd: Fd, to: Fd) -> Errno {
 
         // Ensure the table is big enough to contain `to`. Do this before
         // looking up `fd` as it can fail due to `NOMEM`.
-        while Fd::from(state.ndescriptors) <= to {
+        while Fd::from(state.ndescriptors.get()) <= to {
             let old_closed = state.closed;
             let new_closed = state.push_desc(Descriptor::Closed(old_closed))?;
             state.closed = Some(new_closed);
@@ -1021,7 +1094,7 @@ pub unsafe extern "C" fn fd_renumber(fd: Fd, to: Fd) -> Errno {
         let fd_desc = state.get_mut(fd)?;
         let desc = replace(fd_desc, Descriptor::Closed(closed));
 
-        let to_desc = unwrap_result(state.get_mut(to));
+        let to_desc = state.get_mut(to).trapping_unwrap();
         *to_desc = desc;
         state.closed = Some(fd);
         Ok(())
@@ -1297,7 +1370,7 @@ pub unsafe extern "C" fn path_open(
             None => state.push_desc(desc)?,
             // `recycle_fd` is a free fd.
             Some(recycle_fd) => {
-                let recycle_desc = unwrap_result(state.get_mut(recycle_fd));
+                let recycle_desc = state.get_mut(recycle_fd).trapping_unwrap();
                 let next_closed = match recycle_desc {
                     Descriptor::Closed(next) => *next,
                     _ => unreachable!(),
@@ -1332,14 +1405,18 @@ pub unsafe extern "C" fn path_readlink(
         // so instead we handle this case specially.
         let use_state_buf = buf_len < PATH_MAX;
 
-        if use_state_buf {
-            state.register_buffer(state.path_buf.get().cast(), PATH_MAX);
-        } else {
-            state.register_buffer(buf, buf_len);
-        }
-
         let file = state.get_dir(fd)?;
-        let path = wasi_filesystem::readlink_at(file.fd, path)?;
+        let path = if use_state_buf {
+            state
+                .import_alloc
+                .with_buffer(state.path_buf.get().cast(), PATH_MAX, || {
+                    wasi_filesystem::readlink_at(file.fd, path)
+                })?
+        } else {
+            state
+                .import_alloc
+                .with_buffer(buf, buf_len, || wasi_filesystem::readlink_at(file.fd, path))?
+        };
 
         assert_eq!(path.as_ptr(), buf);
         assert!(path.len() <= buf_len);
@@ -1495,11 +1572,18 @@ pub unsafe extern "C" fn poll_oneoff(
     assert!(align_of::<Event>() >= align_of::<Pollable>());
     assert!(align_of::<Pollable>() >= align_of::<u8>());
     assert!(
-        unwrap(nsubscriptions.checked_mul(size_of::<Event>()))
-            >= unwrap(
-                unwrap(nsubscriptions.checked_mul(size_of::<Pollable>()))
-                    .checked_add(unwrap(nsubscriptions.checked_mul(size_of::<u8>())))
-            )
+        nsubscriptions
+            .checked_mul(size_of::<Event>())
+            .trapping_unwrap()
+            >= nsubscriptions
+                .checked_mul(size_of::<Pollable>())
+                .trapping_unwrap()
+                .checked_add(
+                    nsubscriptions
+                        .checked_mul(size_of::<u8>())
+                        .trapping_unwrap()
+                )
+                .trapping_unwrap()
     );
 
     // Store the pollable handles at the beginning, and the bool results at the
@@ -1513,244 +1597,257 @@ pub unsafe extern "C" fn poll_oneoff(
     }
 
     State::with(|state| {
-        state.register_buffer(
+        state.import_alloc.with_buffer(
             results,
-            unwrap(nsubscriptions.checked_mul(size_of::<bool>())),
-        );
+            nsubscriptions
+                .checked_mul(size_of::<bool>())
+                .trapping_unwrap(),
+            || {
+                let mut pollables = Pollables {
+                    pointer: pollables,
+                    index: 0,
+                    length: nsubscriptions,
+                };
 
-        let mut pollables = Pollables {
-            pointer: pollables,
-            index: 0,
-            length: nsubscriptions,
-        };
+                for subscription in subscriptions {
+                    const EVENTTYPE_CLOCK: u8 = wasi::EVENTTYPE_CLOCK.raw();
+                    const EVENTTYPE_FD_READ: u8 = wasi::EVENTTYPE_FD_READ.raw();
+                    const EVENTTYPE_FD_WRITE: u8 = wasi::EVENTTYPE_FD_WRITE.raw();
+                    pollables.push(match subscription.u.tag {
+                        EVENTTYPE_CLOCK => {
+                            let clock = &subscription.u.u.clock;
+                            let absolute = (clock.flags & SUBCLOCKFLAGS_SUBSCRIPTION_CLOCK_ABSTIME)
+                                == SUBCLOCKFLAGS_SUBSCRIPTION_CLOCK_ABSTIME;
+                            match clock.id {
+                                CLOCKID_REALTIME => {
+                                    let timeout = if absolute {
+                                        // Convert `clock.timeout` to `Datetime`.
+                                        let mut datetime = wasi_wall_clock::Datetime {
+                                            seconds: clock.timeout / 1_000_000_000,
+                                            nanoseconds: (clock.timeout % 1_000_000_000) as _,
+                                        };
 
-        for subscription in subscriptions {
-            const EVENTTYPE_CLOCK: u8 = wasi::EVENTTYPE_CLOCK.raw();
-            const EVENTTYPE_FD_READ: u8 = wasi::EVENTTYPE_FD_READ.raw();
-            const EVENTTYPE_FD_WRITE: u8 = wasi::EVENTTYPE_FD_WRITE.raw();
-            pollables.push(match subscription.u.tag {
-                EVENTTYPE_CLOCK => {
-                    let clock = &subscription.u.u.clock;
-                    let absolute = (clock.flags & SUBCLOCKFLAGS_SUBSCRIPTION_CLOCK_ABSTIME)
-                        == SUBCLOCKFLAGS_SUBSCRIPTION_CLOCK_ABSTIME;
-                    match clock.id {
-                        CLOCKID_REALTIME => {
-                            let timeout = if absolute {
-                                // Convert `clock.timeout` to `Datetime`.
-                                let mut datetime = wasi_clocks::Datetime {
-                                    seconds: clock.timeout / 1_000_000_000,
-                                    nanoseconds: (clock.timeout % 1_000_000_000) as _,
-                                };
+                                        // Subtract `now`.
+                                        let now = wasi_wall_clock::now(state.default_wall_clock());
+                                        datetime.seconds -= now.seconds;
+                                        if datetime.nanoseconds < now.nanoseconds {
+                                            datetime.seconds -= 1;
+                                            datetime.nanoseconds += 1_000_000_000;
+                                        }
+                                        datetime.nanoseconds -= now.nanoseconds;
 
-                                // Subtract `now`.
-                                let now = wasi_clocks::wall_clock_now(state.default_wall_clock());
-                                datetime.seconds -= now.seconds;
-                                if datetime.nanoseconds < now.nanoseconds {
-                                    datetime.seconds -= 1;
-                                    datetime.nanoseconds += 1_000_000_000;
+                                        // Convert to nanoseconds.
+                                        let nanos = datetime
+                                            .seconds
+                                            .checked_mul(1_000_000_000)
+                                            .ok_or(ERRNO_OVERFLOW)?;
+                                        nanos
+                                            .checked_add(datetime.nanoseconds.into())
+                                            .ok_or(ERRNO_OVERFLOW)?
+                                    } else {
+                                        clock.timeout
+                                    };
+
+                                    wasi_monotonic_clock::subscribe(
+                                        state.default_monotonic_clock(),
+                                        timeout,
+                                        false,
+                                    )
                                 }
-                                datetime.nanoseconds -= now.nanoseconds;
 
-                                // Convert to nanoseconds.
-                                let nanos = datetime
-                                    .seconds
-                                    .checked_mul(1_000_000_000)
-                                    .ok_or(ERRNO_OVERFLOW)?;
-                                nanos
-                                    .checked_add(datetime.nanoseconds.into())
-                                    .ok_or(ERRNO_OVERFLOW)?
-                            } else {
-                                clock.timeout
-                            };
+                                CLOCKID_MONOTONIC => wasi_monotonic_clock::subscribe(
+                                    state.default_monotonic_clock(),
+                                    clock.timeout,
+                                    absolute,
+                                ),
 
-                            wasi_poll::subscribe_monotonic_clock(
-                                state.default_monotonic_clock(),
-                                timeout,
-                                false,
-                            )
+                                _ => return Err(ERRNO_INVAL),
+                            }
                         }
 
-                        CLOCKID_MONOTONIC => wasi_poll::subscribe_monotonic_clock(
-                            state.default_monotonic_clock(),
-                            clock.timeout,
-                            absolute,
-                        ),
+                        EVENTTYPE_FD_READ => {
+                            match state.get_read_stream(subscription.u.u.fd_read.file_descriptor) {
+                                Ok(stream) => wasi_io::subscribe_read(stream),
+                                // If the file descriptor isn't a stream, request a
+                                // pollable which completes immediately so that it'll
+                                // immediately fail.
+                                Err(ERRNO_BADF) => wasi_monotonic_clock::subscribe(
+                                    state.default_monotonic_clock(),
+                                    0,
+                                    false,
+                                ),
+                                Err(e) => return Err(e),
+                            }
+                        }
+
+                        EVENTTYPE_FD_WRITE => {
+                            match state.get_write_stream(subscription.u.u.fd_write.file_descriptor)
+                            {
+                                Ok(stream) => wasi_io::subscribe(stream),
+                                // If the file descriptor isn't a stream, request a
+                                // pollable which completes immediately so that it'll
+                                // immediately fail.
+                                Err(ERRNO_BADF) => wasi_monotonic_clock::subscribe(
+                                    state.default_monotonic_clock(),
+                                    0,
+                                    false,
+                                ),
+                                Err(e) => return Err(e),
+                            }
+                        }
 
                         _ => return Err(ERRNO_INVAL),
-                    }
+                    });
                 }
 
-                EVENTTYPE_FD_READ => {
-                    match state.get_read_stream(subscription.u.u.fd_read.file_descriptor) {
-                        Ok(stream) => wasi_poll::subscribe_read(stream),
-                        // If the file descriptor isn't a stream, request a
-                        // pollable which completes immediately so that it'll
-                        // immediately fail.
-                        Err(ERRNO_BADF) => wasi_poll::subscribe_monotonic_clock(
-                            state.default_monotonic_clock(),
-                            0,
-                            false,
-                        ),
-                        Err(e) => return Err(e),
-                    }
-                }
+                let vec = wasi_poll::poll_oneoff(slice::from_raw_parts(
+                    pollables.pointer,
+                    pollables.length,
+                ));
 
-                EVENTTYPE_FD_WRITE => {
-                    match state.get_write_stream(subscription.u.u.fd_write.file_descriptor) {
-                        Ok(stream) => wasi_poll::subscribe_write(stream),
-                        // If the file descriptor isn't a stream, request a
-                        // pollable which completes immediately so that it'll
-                        // immediately fail.
-                        Err(ERRNO_BADF) => wasi_poll::subscribe_monotonic_clock(
-                            state.default_monotonic_clock(),
-                            0,
-                            false,
-                        ),
-                        Err(e) => return Err(e),
-                    }
-                }
+                assert_eq!(vec.len(), nsubscriptions);
+                assert_eq!(vec.as_ptr(), results);
+                forget(vec);
 
-                _ => return Err(ERRNO_INVAL),
-            });
-        }
+                drop(pollables);
 
-        let vec =
-            wasi_poll::poll_oneoff(slice::from_raw_parts(pollables.pointer, pollables.length));
+                let ready = subscriptions
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, s)| (*results.add(i) != 0).then_some(s));
 
-        assert_eq!(vec.len(), nsubscriptions);
-        assert_eq!(vec.as_ptr(), results);
-        forget(vec);
+                let mut count = 0;
 
-        drop(pollables);
+                for subscription in ready {
+                    let error;
+                    let type_;
+                    let nbytes;
+                    let flags;
 
-        let ready = subscriptions
-            .iter()
-            .enumerate()
-            .filter_map(|(i, s)| (*results.add(i) != 0).then_some(s));
+                    match subscription.u.tag {
+                        0 => {
+                            error = ERRNO_SUCCESS;
+                            type_ = EVENTTYPE_CLOCK;
+                            nbytes = 0;
+                            flags = 0;
+                        }
 
-        let mut count = 0;
-
-        for subscription in ready {
-            let error;
-            let type_;
-            let nbytes;
-            let flags;
-
-            match subscription.u.tag {
-                0 => {
-                    error = ERRNO_SUCCESS;
-                    type_ = EVENTTYPE_CLOCK;
-                    nbytes = 0;
-                    flags = 0;
-                }
-
-                1 => {
-                    type_ = EVENTTYPE_FD_READ;
-                    let desc = unwrap_result(state.get(subscription.u.u.fd_read.file_descriptor));
-                    match desc {
-                        Descriptor::Streams(streams) => match &streams.type_ {
-                            StreamType::File(file) => match wasi_filesystem::stat(file.fd) {
-                                Ok(stat) => {
-                                    error = ERRNO_SUCCESS;
-                                    nbytes = stat.size.saturating_sub(file.position.get());
-                                    flags = if nbytes == 0 {
-                                        EVENTRWFLAGS_FD_READWRITE_HANGUP
-                                    } else {
-                                        0
-                                    };
-                                }
-                                Err(e) => {
-                                    error = e.into();
-                                    nbytes = 1;
-                                    flags = 0;
-                                }
-                            },
-                            StreamType::Socket(connection) => {
-                                match wasi_tcp::bytes_readable(*connection) {
-                                    Ok(result) => {
-                                        error = ERRNO_SUCCESS;
-                                        nbytes = result.0;
-                                        flags = if result.1 {
-                                            EVENTRWFLAGS_FD_READWRITE_HANGUP
-                                        } else {
-                                            0
-                                        };
+                        1 => {
+                            type_ = EVENTTYPE_FD_READ;
+                            let desc = state
+                                .get(subscription.u.u.fd_read.file_descriptor)
+                                .trapping_unwrap();
+                            match desc {
+                                Descriptor::Streams(streams) => match &streams.type_ {
+                                    StreamType::File(file) => {
+                                        match wasi_filesystem::stat(file.fd) {
+                                            Ok(stat) => {
+                                                error = ERRNO_SUCCESS;
+                                                nbytes =
+                                                    stat.size.saturating_sub(file.position.get());
+                                                flags = if nbytes == 0 {
+                                                    EVENTRWFLAGS_FD_READWRITE_HANGUP
+                                                } else {
+                                                    0
+                                                };
+                                            }
+                                            Err(e) => {
+                                                error = e.into();
+                                                nbytes = 1;
+                                                flags = 0;
+                                            }
+                                        }
                                     }
-                                    Err(e) => {
-                                        error = e.into();
+                                    StreamType::Socket(connection) => {
+                                        match wasi_tcp::bytes_readable(*connection) {
+                                            Ok(result) => {
+                                                error = ERRNO_SUCCESS;
+                                                nbytes = result.0;
+                                                flags = if result.1 {
+                                                    EVENTRWFLAGS_FD_READWRITE_HANGUP
+                                                } else {
+                                                    0
+                                                };
+                                            }
+                                            Err(e) => {
+                                                error = e.into();
+                                                nbytes = 0;
+                                                flags = 0;
+                                            }
+                                        }
+                                    }
+                                    StreamType::EmptyStdin => {
+                                        error = ERRNO_SUCCESS;
+                                        nbytes = 0;
+                                        flags = EVENTRWFLAGS_FD_READWRITE_HANGUP;
+                                    }
+                                    StreamType::Unknown => {
+                                        error = ERRNO_SUCCESS;
+                                        nbytes = 1;
+                                        flags = 0;
+                                    }
+                                },
+                                _ => unreachable!(),
+                            }
+                        }
+                        2 => {
+                            type_ = EVENTTYPE_FD_WRITE;
+                            let desc = state
+                                .get(subscription.u.u.fd_read.file_descriptor)
+                                .trapping_unwrap();
+                            match desc {
+                                Descriptor::Streams(streams) => match streams.type_ {
+                                    StreamType::File(_) | StreamType::Unknown => {
+                                        error = ERRNO_SUCCESS;
+                                        nbytes = 1;
+                                        flags = 0;
+                                    }
+                                    StreamType::Socket(connection) => {
+                                        match wasi_tcp::bytes_writable(connection) {
+                                            Ok(result) => {
+                                                error = ERRNO_SUCCESS;
+                                                nbytes = result.0;
+                                                flags = if result.1 {
+                                                    EVENTRWFLAGS_FD_READWRITE_HANGUP
+                                                } else {
+                                                    0
+                                                };
+                                            }
+                                            Err(e) => {
+                                                error = e.into();
+                                                nbytes = 0;
+                                                flags = 0;
+                                            }
+                                        }
+                                    }
+                                    StreamType::EmptyStdin => {
+                                        error = ERRNO_BADF;
                                         nbytes = 0;
                                         flags = 0;
                                     }
-                                }
+                                },
+                                _ => unreachable!(),
                             }
-                            StreamType::EmptyStdin => {
-                                error = ERRNO_SUCCESS;
-                                nbytes = 0;
-                                flags = EVENTRWFLAGS_FD_READWRITE_HANGUP;
-                            }
-                            StreamType::Unknown => {
-                                error = ERRNO_SUCCESS;
-                                nbytes = 1;
-                                flags = 0;
-                            }
-                        },
+                        }
+
                         _ => unreachable!(),
                     }
-                }
-                2 => {
-                    type_ = EVENTTYPE_FD_WRITE;
-                    let desc = unwrap_result(state.get(subscription.u.u.fd_read.file_descriptor));
-                    match desc {
-                        Descriptor::Streams(streams) => match streams.type_ {
-                            StreamType::File(_) | StreamType::Unknown => {
-                                error = ERRNO_SUCCESS;
-                                nbytes = 1;
-                                flags = 0;
-                            }
-                            StreamType::Socket(connection) => {
-                                match wasi_tcp::bytes_writable(connection) {
-                                    Ok(result) => {
-                                        error = ERRNO_SUCCESS;
-                                        nbytes = result.0;
-                                        flags = if result.1 {
-                                            EVENTRWFLAGS_FD_READWRITE_HANGUP
-                                        } else {
-                                            0
-                                        };
-                                    }
-                                    Err(e) => {
-                                        error = e.into();
-                                        nbytes = 0;
-                                        flags = 0;
-                                    }
-                                }
-                            }
-                            StreamType::EmptyStdin => {
-                                error = ERRNO_BADF;
-                                nbytes = 0;
-                                flags = 0;
-                            }
-                        },
-                        _ => unreachable!(),
-                    }
+
+                    *out.add(count) = Event {
+                        userdata: subscription.userdata,
+                        error,
+                        type_,
+                        fd_readwrite: EventFdReadwrite { nbytes, flags },
+                    };
+
+                    count += 1;
                 }
 
-                _ => unreachable!(),
-            }
+                *nevents = count;
 
-            *out.add(count) = Event {
-                userdata: subscription.userdata,
-                error,
-                type_,
-                fd_readwrite: EventFdReadwrite { nbytes, flags },
-            };
-
-            count += 1;
-        }
-
-        *nevents = count;
-
-        Ok(())
+                Ok(())
+            },
+        )
     })
 }
 
@@ -1793,10 +1890,10 @@ pub unsafe extern "C" fn random_get(buf: *mut u8, buf_len: Size) -> Errno {
         AllocationState::StackAllocated | AllocationState::StateAllocated
     ) {
         State::with(|state| {
-            state.register_buffer(buf, buf_len);
-
             assert_eq!(buf_len as u32 as Size, buf_len);
-            let result = wasi_random::get_random_bytes(buf_len as u32);
+            let result = state.import_alloc.with_buffer(buf, buf_len, || {
+                wasi_random::get_random_bytes(buf_len as u32)
+            });
             assert_eq!(result.as_ptr(), buf);
 
             // The returned buffer's memory was allocated in `buf`, so don't separately
@@ -2067,7 +2164,7 @@ impl Drop for Descriptor {
                     wasi_io::drop_output_stream(output);
                 }
                 match &stream.type_ {
-                    StreamType::File(file) => wasi_filesystem::close(file.fd),
+                    StreamType::File(file) => wasi_filesystem::drop_descriptor(file.fd),
                     StreamType::Socket(_) => unreachable!(),
                     StreamType::EmptyStdin | StreamType::Unknown => {}
                 }
@@ -2111,15 +2208,13 @@ struct State {
     /// try to catch memory corruption coming from the bottom.
     magic1: u32,
 
-    /// Used by `register_buffer` to coordinate allocations with
-    /// `cabi_import_realloc`.
-    buffer_ptr: Cell<*mut u8>,
-    buffer_len: Cell<usize>,
+    /// Used to coordinate allocations of `cabi_import_realloc`
+    import_alloc: ImportAlloc,
 
     /// Storage of mapping from preview1 file descriptors to preview2 file
     /// descriptors.
-    ndescriptors: u16,
-    descriptors: MaybeUninit<[Descriptor; MAX_DESCRIPTORS]>,
+    ndescriptors: Cell<u16>,
+    descriptors: UnsafeCell<MaybeUninit<[Descriptor; MAX_DESCRIPTORS]>>,
 
     /// Points to the head of a free-list of closed file descriptors.
     closed: Option<Fd>,
@@ -2127,21 +2222,24 @@ struct State {
     /// Auxiliary storage to handle the `path_readlink` function.
     path_buf: UnsafeCell<MaybeUninit<[u8; PATH_MAX]>>,
 
-    /// Storage area for data passed to the `command` entrypoint. The
-    /// `command_data` is a block of memory which is dynamically allocated from
-    /// in `cabi_export_realloc`. The `command_data_next` is the
-    /// bump-allocated-pointer of where to allocate from next.
-    command_data: MaybeUninit<[u8; command_data_size()]>,
-    command_data_next: u16,
+    /// Long-lived bump allocated memory arena.
+    ///
+    /// This is used for the cabi_export_realloc to allocate data passed to the
+    /// `command` entrypoint. Allocations in this arena are safe to use for
+    /// the lifetime of the State struct. It may also be used for import allocations
+    /// which need to be long-lived, by using `import_alloc.with_arena`.
+    long_lived_arena: BumpArena,
 
     /// Arguments passed to the `command` entrypoint
     args: Option<&'static [WasmStr]>,
 
-    /// Environment variables passed to the `command` entrypoint
-    env_vars: Option<&'static [StrTuple]>,
+    /// Environment variables. Initialized lazily. Access with `State::get_environment`
+    /// to take care of initialization.
+    env_vars: Cell<Option<&'static [StrTuple]>>,
 
-    /// Preopened directories passed to the `command` entrypoint
-    preopens: Option<&'static [Preopen]>,
+    /// Preopened directories. Initialized lazily. Access with `State::get_preopens`
+    /// to take care of initialization.
+    preopens: Cell<Option<&'static [Preopen]>>,
 
     /// Cache for the `fd_readdir` call for a final `wasi::Dirent` plus path
     /// name that didn't fit into the caller's buffer.
@@ -2170,7 +2268,7 @@ struct DirEntryStream(wasi_filesystem::DirEntryStream);
 
 impl Drop for DirEntryStream {
     fn drop(&mut self) {
-        wasi_filesystem::close_dir_entry_stream(self.0);
+        wasi_filesystem::drop_dir_entry_stream(self.0);
     }
 }
 
@@ -2205,7 +2303,7 @@ pub struct PreopenList {
     len: usize,
 }
 
-const fn command_data_size() -> usize {
+const fn bump_arena_size() -> usize {
     // The total size of the struct should be a page, so start there
     let mut start = PAGE_SIZE;
 
@@ -2216,7 +2314,7 @@ const fn command_data_size() -> usize {
     start -= size_of::<DirentCache>();
 
     // Remove miscellaneous metadata also stored in state.
-    start -= 21 * size_of::<usize>();
+    start -= 24 * size_of::<usize>();
 
     // Everything else is the `command_data` allocation.
     start
@@ -2317,17 +2415,15 @@ impl State {
             ret.write(RefCell::new(State {
                 magic1: MAGIC,
                 magic2: MAGIC,
-                buffer_ptr: Cell::new(null_mut()),
-                buffer_len: Cell::new(0),
-                ndescriptors: 0,
+                import_alloc: ImportAlloc::new(),
                 closed: None,
-                descriptors: MaybeUninit::uninit(),
+                ndescriptors: Cell::new(0),
+                descriptors: UnsafeCell::new(MaybeUninit::uninit()),
                 path_buf: UnsafeCell::new(MaybeUninit::uninit()),
-                command_data: MaybeUninit::uninit(),
-                command_data_next: 0,
+                long_lived_arena: BumpArena::new(),
                 args: None,
-                env_vars: None,
-                preopens: None,
+                env_vars: Cell::new(None),
+                preopens: Cell::new(None),
                 dirent_cache: DirentCache {
                     stream: Cell::new(None),
                     for_fd: Cell::new(0),
@@ -2354,36 +2450,38 @@ impl State {
     fn init(&mut self) {
         // Set up a default stdin. This will be overridden when `command`
         // is called.
-        unwrap_result(self.push_desc(Descriptor::Streams(Streams {
+        self.push_desc(Descriptor::Streams(Streams {
             input: Cell::new(None),
             output: Cell::new(None),
             type_: StreamType::Unknown,
-        })));
+        }))
+        .trapping_unwrap();
         // Set up a default stdout, writing to the stderr device. This will
         // be overridden when `command` is called.
-        unwrap_result(self.push_desc(Descriptor::Stderr));
+        self.push_desc(Descriptor::Stderr).trapping_unwrap();
         // Set up a default stderr.
-        unwrap_result(self.push_desc(Descriptor::Stderr));
+        self.push_desc(Descriptor::Stderr).trapping_unwrap();
     }
 
-    fn push_desc(&mut self, desc: Descriptor) -> Result<Fd, Errno> {
+    fn push_desc(&self, desc: Descriptor) -> Result<Fd, Errno> {
         unsafe {
-            let descriptors = self.descriptors.as_mut_ptr();
-            let ndescriptors = unwrap_result(usize::try_from(self.ndescriptors));
+            let descriptors = (*self.descriptors.get()).as_mut_ptr();
+            let ndescriptors = usize::try_from(self.ndescriptors.get()).trapping_unwrap();
             if ndescriptors >= (*descriptors).len() {
                 return Err(ERRNO_NOMEM);
             }
             ptr::addr_of_mut!((*descriptors)[ndescriptors]).write(desc);
-            self.ndescriptors += 1;
-            Ok(Fd::from(self.ndescriptors - 1))
+            self.ndescriptors
+                .set(u16::try_from(ndescriptors + 1).trapping_unwrap());
+            Ok(Fd::from(u32::try_from(ndescriptors).trapping_unwrap()))
         }
     }
 
     fn descriptors(&self) -> &[Descriptor] {
         unsafe {
             slice::from_raw_parts(
-                self.descriptors.as_ptr().cast(),
-                unwrap_result(usize::try_from(self.ndescriptors)),
+                (*self.descriptors.get()).as_ptr().cast(),
+                usize::try_from(self.ndescriptors.get()).trapping_unwrap(),
             )
         }
     }
@@ -2391,21 +2489,21 @@ impl State {
     fn descriptors_mut(&mut self) -> &mut [Descriptor] {
         unsafe {
             slice::from_raw_parts_mut(
-                self.descriptors.as_mut_ptr().cast(),
-                unwrap_result(usize::try_from(self.ndescriptors)),
+                (*self.descriptors.get()).as_mut_ptr().cast(),
+                usize::try_from(self.ndescriptors.get()).trapping_unwrap(),
             )
         }
     }
 
     fn get(&self, fd: Fd) -> Result<&Descriptor, Errno> {
         self.descriptors()
-            .get(unwrap_result(usize::try_from(fd)))
+            .get(usize::try_from(fd).trapping_unwrap())
             .ok_or(ERRNO_BADF)
     }
 
     fn get_mut(&mut self, fd: Fd) -> Result<&mut Descriptor, Errno> {
         self.descriptors_mut()
-            .get_mut(unwrap_result(usize::try_from(fd)))
+            .get_mut(usize::try_from(fd).trapping_unwrap())
             .ok_or(ERRNO_BADF)
     }
 
@@ -2470,13 +2568,6 @@ impl State {
         }
     }
 
-    /// Register `buf` and `buf_len` to be used by `cabi_realloc` to satisfy
-    /// the next request.
-    fn register_buffer(&self, buf: *mut u8, buf_len: usize) {
-        self.buffer_ptr.set(buf);
-        self.buffer_len.set(buf_len);
-    }
-
     /// Return a handle to the default wall clock, creating one if we
     /// don't already have one.
     fn default_wall_clock(&self) -> Fd {
@@ -2505,5 +2596,72 @@ impl State {
         let clock = wasi_default_clocks::default_monotonic_clock();
         self.default_monotonic_clock.set(Some(clock));
         clock
+    }
+
+    fn get_environment(&self) -> &[StrTuple] {
+        if self.env_vars.get().is_none() {
+            #[link(wasm_import_module = "wasi-environment")]
+            extern "C" {
+                #[link_name = "get-environment"]
+                fn get_environment_import(rval: *mut StrTupleList);
+            }
+            let mut list = StrTupleList {
+                base: std::ptr::null(),
+                len: 0,
+            };
+            self.import_alloc
+                .with_arena(&self.long_lived_arena, || unsafe {
+                    get_environment_import(&mut list as *mut _)
+                });
+            self.env_vars.set(Some(unsafe {
+                /* allocation comes from long lived arena, so it is safe to
+                 * cast this to a &'static slice: */
+                std::slice::from_raw_parts(list.base, list.len)
+            }));
+        }
+        self.env_vars.get().trapping_unwrap()
+    }
+
+    fn get_preopens(&self) -> &[Preopen] {
+        if self.preopens.get().is_none() {
+            #[link(wasm_import_module = "wasi-filesystem")]
+            extern "C" {
+                #[link_name = "get-preopens"]
+                fn get_preopens_import(rval: *mut PreopenList);
+            }
+            let mut list = PreopenList {
+                base: std::ptr::null(),
+                len: 0,
+            };
+            self.import_alloc
+                .with_arena(&self.long_lived_arena, || unsafe {
+                    get_preopens_import(&mut list as *mut _)
+                });
+            let preopens: &'static [Preopen] = unsafe {
+                // allocation comes from long lived arena, so it is safe to
+                // cast this to a &'static slice:
+                std::slice::from_raw_parts(list.base, list.len)
+            };
+            for preopen in preopens {
+                // Expectation is that the descriptor index is initialized with
+                // stdio (0,1,2) and no others, so that preopens are 3..
+                self.push_desc(Descriptor::Streams(Streams {
+                    input: Cell::new(None),
+                    output: Cell::new(None),
+                    type_: StreamType::File(File {
+                        fd: preopen.descriptor,
+                        position: Cell::new(0),
+                        append: false,
+                    }),
+                }))
+                .trapping_unwrap();
+            }
+            self.preopens.set(Some(preopens));
+        }
+        self.preopens.get().trapping_unwrap()
+    }
+
+    fn get_preopen(&self, fd: Fd) -> Option<&Preopen> {
+        self.get_preopens().get(fd.checked_sub(3)? as usize)
     }
 }

@@ -1,6 +1,8 @@
 default world wasi {
-  import wasi-clocks: pkg.wasi-clocks
-  import wasi-default-clocks: pkg.wasi-clocks.wasi-default-clocks
+  import wasi-monotonic-clock: pkg.wasi-monotonic-clock
+  import wasi-wall-clock: pkg.wasi-wall-clock
+  import wasi-timezone: pkg.wasi-timezone
+  import wasi-default-clocks: pkg.wasi-default-clocks.wasi-default-clocks
   import wasi-logging: pkg.wasi-logging
   import wasi-stderr: pkg.wasi-stderr
   import wasi-filesystem: pkg.wasi-filesystem
@@ -11,5 +13,6 @@ default world wasi {
   import wasi-ip: pkg.wasi-ip
   import wasi-dns: pkg.wasi-dns
   import wasi-exit: pkg.wasi-exit
+  import wasi-environment: pkg.wasi-environment
   import wasi-http: pkg.wasi-http
 }
