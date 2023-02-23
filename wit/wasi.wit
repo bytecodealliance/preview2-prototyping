@@ -14,5 +14,5 @@ default world wasi {
   import wasi-dns: pkg.wasi-dns
   import wasi-exit: pkg.wasi-exit
   import wasi-environment: pkg.wasi-environment
-  import wasi-http: pkg.wasi-http
+  import wasi-default-upstream-http: pkg.wasi-default-upstream-http
 }
