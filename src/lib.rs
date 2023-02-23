@@ -378,9 +378,9 @@ pub extern "C" fn clock_res_get(id: Clockid, resolution: &mut Timestamp) -> Errn
             }
             CLOCKID_REALTIME => {
                 let res = wasi_wall_clock::resolution(state.default_wall_clock());
-                *resolution = Timestamp::from(res.nanoseconds)
-                    .checked_add(res.seconds)
-                    .and_then(|secs| secs.checked_mul(1_000_000_000))
+                *resolution = Timestamp::from(res.seconds)
+                    .checked_mul(1_000_000_000)
+                    .and_then(|ns| ns.checked_add(res.nanoseconds.into()))
                     .ok_or(ERRNO_OVERFLOW)?;
             }
             _ => unreachable!(),
@@ -408,9 +408,9 @@ pub unsafe extern "C" fn clock_time_get(
                 }
                 CLOCKID_REALTIME => {
                     let res = wasi_wall_clock::now(state.default_wall_clock());
-                    *time = Timestamp::from(res.nanoseconds)
-                        .checked_add(res.seconds)
-                        .and_then(|secs| secs.checked_mul(1_000_000_000))
+                    *time = Timestamp::from(res.seconds)
+                        .checked_mul(1_000_000_000)
+                        .and_then(|ns| ns.checked_add(res.nanoseconds.into()))
                         .ok_or(ERRNO_OVERFLOW)?;
                 }
                 _ => unreachable!(),
@@ -914,6 +914,13 @@ pub unsafe extern "C" fn fd_readdir(
             } else {
                 None
             };
+
+        // Compute the inode of `.` so that the iterator can produce an entry
+        // for it.
+        let dir = state.get_dir(fd)?;
+        let stat = wasi_filesystem::stat(dir.fd)?;
+        let dot_inode = stat.ino;
+
         let mut iter;
         match stream {
             // All our checks passed and a dirent cache was available with a
@@ -926,6 +933,7 @@ pub unsafe extern "C" fn fd_readdir(
                     state,
                     cookie,
                     use_cache: true,
+                    dot_inode,
                 }
             }
 
@@ -935,12 +943,12 @@ pub unsafe extern "C" fn fd_readdir(
             // from scratch, and the `cookie` value indicates how many items
             // need skipping.
             None => {
-                let dir = state.get_dir(fd)?;
                 iter = DirEntryIterator {
                     state,
                     cookie: wasi::DIRCOOKIE_START,
                     use_cache: false,
                     stream: DirEntryStream(wasi_filesystem::readdir(dir.fd)?),
+                    dot_inode,
                 };
 
                 // Skip to the entry that is requested by the `cookie`
@@ -1019,6 +1027,7 @@ pub unsafe extern "C" fn fd_readdir(
         use_cache: bool,
         cookie: Dircookie,
         stream: DirEntryStream,
+        dot_inode: wasi::Inode,
     }
 
     impl<'a> Iterator for DirEntryIterator<'a> {
@@ -1027,7 +1036,33 @@ pub unsafe extern "C" fn fd_readdir(
         type Item = Result<(wasi::Dirent, &'a [UnsafeCell<u8>]), Errno>;
 
         fn next(&mut self) -> Option<Self::Item> {
+            let current_cookie = self.cookie;
+
             self.cookie += 1;
+
+            // Preview1 programs expect to see `.` and `..` in the traversal, but
+            // Preview2 excludes them, so re-add them.
+            match current_cookie {
+                0 => {
+                    let dirent = wasi::Dirent {
+                        d_next: self.cookie,
+                        d_ino: self.dot_inode,
+                        d_type: wasi::FILETYPE_DIRECTORY,
+                        d_namlen: 1,
+                    };
+                    return Some(Ok((dirent, &self.state.dotdot[..1])));
+                }
+                1 => {
+                    let dirent = wasi::Dirent {
+                        d_next: self.cookie,
+                        d_ino: 0,
+                        d_type: wasi::FILETYPE_DIRECTORY,
+                        d_namlen: 2,
+                    };
+                    return Some(Ok((dirent, &self.state.dotdot[..])));
+                }
+                _ => {}
+            }
 
             if self.use_cache {
                 self.use_cache = false;
@@ -1165,46 +1200,54 @@ pub unsafe extern "C" fn fd_write(
     mut iovs_len: usize,
     nwritten: *mut Size,
 ) -> Errno {
-    // Advance to the first non-empty buffer.
-    while iovs_len != 0 && (*iovs_ptr).buf_len == 0 {
-        iovs_ptr = iovs_ptr.add(1);
-        iovs_len -= 1;
-    }
-    if iovs_len == 0 {
-        *nwritten = 0;
-        return ERRNO_SUCCESS;
-    }
+    if matches!(
+        get_allocation_state(),
+        AllocationState::StackAllocated | AllocationState::StateAllocated
+    ) {
+        // Advance to the first non-empty buffer.
+        while iovs_len != 0 && (*iovs_ptr).buf_len == 0 {
+            iovs_ptr = iovs_ptr.add(1);
+            iovs_len -= 1;
+        }
+        if iovs_len == 0 {
+            *nwritten = 0;
+            return ERRNO_SUCCESS;
+        }
 
-    let ptr = (*iovs_ptr).buf;
-    let len = (*iovs_ptr).buf_len;
-    let bytes = slice::from_raw_parts(ptr, len);
+        let ptr = (*iovs_ptr).buf;
+        let len = (*iovs_ptr).buf_len;
+        let bytes = slice::from_raw_parts(ptr, len);
 
-    State::with(|state| match state.get(fd)? {
-        Descriptor::Streams(streams) => {
-            let wasi_stream = streams.get_write_stream()?;
-            let bytes = wasi_io::write(wasi_stream, bytes).map_err(|_| ERRNO_IO)?;
+        State::with(|state| match state.get(fd)? {
+            Descriptor::Streams(streams) => {
+                let wasi_stream = streams.get_write_stream()?;
+                let bytes = wasi_io::write(wasi_stream, bytes).map_err(|_| ERRNO_IO)?;
 
-            // If this is a file, keep the current-position pointer up to date.
-            if let StreamType::File(file) = &streams.type_ {
-                // But don't update if we're in append mode. Strictly speaking,
-                // we should set the position to the new end of the file, but
-                // we don't have an API to do that atomically.
-                if !file.append {
-                    file.position
-                        .set(file.position.get() + wasi_filesystem::Filesize::from(bytes));
+                // If this is a file, keep the current-position pointer up to date.
+                if let StreamType::File(file) = &streams.type_ {
+                    // But don't update if we're in append mode. Strictly speaking,
+                    // we should set the position to the new end of the file, but
+                    // we don't have an API to do that atomically.
+                    if !file.append {
+                        file.position
+                            .set(file.position.get() + wasi_filesystem::Filesize::from(bytes));
+                    }
                 }
-            }
 
-            *nwritten = bytes as usize;
-            Ok(())
-        }
-        Descriptor::Stderr => {
-            wasi_stderr::print(bytes);
-            *nwritten = len;
-            Ok(())
-        }
-        Descriptor::Closed(_) => Err(ERRNO_BADF),
-    })
+                *nwritten = bytes as usize;
+                Ok(())
+            }
+            Descriptor::Stderr => {
+                wasi_stderr::print(bytes);
+                *nwritten = len;
+                Ok(())
+            }
+            Descriptor::Closed(_) => Err(ERRNO_BADF),
+        })
+    } else {
+        *nwritten = 0;
+        ERRNO_IO
+    }
 }
 
 /// Create a directory.
@@ -2251,6 +2294,9 @@ struct State {
     /// The clock handle for `CLOCKID_REALTIME`.
     default_wall_clock: Cell<Option<Fd>>,
 
+    /// The string `..` for use by the directory iterator.
+    dotdot: [UnsafeCell<u8>; 2],
+
     /// Another canary constant located at the end of the structure to catch
     /// memory corruption coming from the bottom.
     magic2: u32,
@@ -2438,6 +2484,7 @@ impl State {
                 },
                 default_monotonic_clock: Cell::new(None),
                 default_wall_clock: Cell::new(None),
+                dotdot: [UnsafeCell::new(b'.'), UnsafeCell::new(b'.')],
             }));
             &*ret
         };
