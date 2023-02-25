@@ -164,7 +164,7 @@ impl WasiDir for Dir {
     }
 
     async fn get_fdflags(&self) -> Result<FdFlags, Error> {
-        let fdflags = get_fd_flags(&self.0)?;
+        let fdflags = get_fd_flags(&*self.0)?;
         Ok(fdflags)
     }
 
