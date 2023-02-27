@@ -29,7 +29,7 @@ system-interface = { version = "0.25.1", features = ["cap_std_impls"] }
 
 [dependencies]
 wasi = { version = "0.11.0", default-features = false }
-wit-bindgen = {  version = "0.4.0", default-features = false, features = ["macros"] }
+wit-bindgen = { version = "0.4.0", default-features = false, features = ["macros"] }
 byte-array = { path = "byte-array" }
 
 [build-dependencies]
