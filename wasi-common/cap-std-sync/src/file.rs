@@ -74,7 +74,7 @@ impl WasiFile for File {
         Ok(filetype_from(&meta.file_type()))
     }
     async fn get_fdflags(&self) -> Result<FdFlags, Error> {
-        let fdflags = get_fd_flags(&self.0)?;
+        let fdflags = get_fd_flags(&*self.0)?;
         Ok(fdflags)
     }
     async fn get_filestat(&self) -> Result<Filestat, Error> {
@@ -165,7 +165,7 @@ impl WasiFile for File {
     }
 
     async fn readable(&self) -> Result<(), Error> {
-        if is_read_write(&self.0)?.0 {
+        if is_read_write(&*self.0)?.0 {
             Ok(())
         } else {
             Err(Error::badf())
@@ -173,7 +173,7 @@ impl WasiFile for File {
     }
 
     async fn writable(&self) -> Result<(), Error> {
-        if is_read_write(&self.0)?.1 {
+        if is_read_write(&*self.0)?.1 {
             Ok(())
         } else {
             Err(Error::badf())
