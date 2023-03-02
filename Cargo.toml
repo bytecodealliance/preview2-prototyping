@@ -54,6 +54,10 @@ strip = 'debuginfo'
 incremental = false
 opt-level = 's'
 
+# Omit assertions, which include failure messages which require string
+# initializers.
+debug-assertions = false
+
 # Omit integer overflow checks, which include failure messages which require
 # string initializers.
 overflow-checks = false
