@@ -74,24 +74,24 @@ jobs:
     - run: |
         curl -L https://github.com/bytecodealliance/wit-bindgen/releases/download/wit-bindgen-cli-0.3.0/wit-bindgen-v0.3.0-x86_64-linux.tar.gz | tar xfz -
         echo `pwd`/wit-bindgen-v0.3.0-x86_64-linux >> $GITHUB_PATH
-    - run: wit-bindgen c ./wit --world wasi-command
+    - run: wit-bindgen c ./wit --world cli
     - uses: actions/upload-artifact@v3
       with:
-        name: wasi_command.c
-        path: wasi_command.c
+        name: cli.c
+        path: cli.c
     - uses: actions/upload-artifact@v3
       with:
-        name: wasi_command.h
-        path: wasi_command.h
+        name: cli.h
+        path: cli.h
     - uses: actions/upload-artifact@v3
       with:
-        name: wasi_command_component_type.o
-        path: wasi_command_component_type.o
-    - run: wit-bindgen rust ./wit --world wasi-command
+        name: cli_component_type.o
+        path: cli_component_type.o
+    - run: wit-bindgen rust ./wit --world cli
     - uses: actions/upload-artifact@v3
       with:
-        name: wasi-command.rs
-        path: wasi-command.rs
+        name: cli.rs
+        path: cli.rs
 
     - uses: actions/upload-artifact@v3
       with:
@@ -108,7 +108,7 @@ jobs:
         files: |
           target/wasm32-unknown-unknown/release/wasi_snapshot_preview1.wasm
           wasi_snapshot_preview1.command.wasm
-          wasi_command.c
-          wasi_command.h
-          wasi_command_component_type.o
-          wasi-command.rs
+          cli.c
+          cli.h
+          cli_component_type.o
+          cli.rs
