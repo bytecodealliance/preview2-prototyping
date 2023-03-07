@@ -42,6 +42,7 @@ jobs:
       # rust-lang/rust#105395 reaches stable.
     - run: rustup update nightly
     - run: rustup default nightly
+    - run: rustup target add --toolchain=stable wasm32-wasi wasm32-unknown-unknown
     - run: rustup target add --toolchain=nightly wasm32-wasi wasm32-unknown-unknown
     - run: cargo build --target wasm32-unknown-unknown
     - run: cargo run -p verify -- ./target/wasm32-unknown-unknown/debug/wasi_snapshot_preview1.wasm
