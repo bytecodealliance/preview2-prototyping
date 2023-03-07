@@ -8,4 +8,4 @@ publish = false
 crate-type=["cdylib"]
 
 [dependencies]
-wit-bindgen = { git = "https://github.com/bytecodealliance/wit-bindgen", rev = "8f34a0279a4ac361024b4bb51299fa0e38e0f520" }
+wit-bindgen = "0.4.0"
