@@ -41,7 +41,8 @@ fn main() {
     println!("wasi reactor adapter: {:?}", &reactor_adapter);
     let reactor_adapter = fs::read(&reactor_adapter).unwrap();
 
-    // Build all test program crates:
+    // Build all test program crates
+    // wasi-tests and test-programs require nightly for a feature in the `errno` crate
     println!("cargo:rerun-if-changed=..");
     let mut cmd = Command::new("rustup");
     cmd.arg("run")
@@ -51,6 +52,20 @@ fn main() {
         .arg("--target=wasm32-wasi")
         .arg("--package=wasi-tests")
         .arg("--package=test-programs")
+        .current_dir("..")
+        .env("CARGO_TARGET_DIR", &out_dir)
+        .env("CARGO_PROFILE_DEV_DEBUG", "1")
+        .env_remove("CARGO_ENCODED_RUSTFLAGS");
+    let status = cmd.status().unwrap();
+    assert!(status.success());
+
+    // reactor-tests can build on stable:
+    let mut cmd = Command::new("rustup");
+    cmd.arg("run")
+        .arg("stable")
+        .arg("cargo")
+        .arg("build")
+        .arg("--target=wasm32-wasi")
         .arg("--package=reactor-tests")
         .current_dir("..")
         .env("CARGO_TARGET_DIR", &out_dir)
