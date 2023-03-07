@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use wit_component::ComponentEncoder;
 
-fn main() {
+fn build_adapter(name: &str, features: &[&str]) -> Vec<u8> {
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
     println!("cargo:rerun-if-changed=../../src");
@@ -14,32 +14,32 @@ fn main() {
         .arg("--release")
         .current_dir("../../")
         .arg("--target=wasm32-unknown-unknown")
-        .arg("--features=command")
         .env("CARGO_TARGET_DIR", &out_dir)
         .env_remove("CARGO_ENCODED_RUSTFLAGS");
+    for f in features {
+        cmd.arg(f);
+    }
     let status = cmd.status().unwrap();
     assert!(status.success());
 
-    let command_adapter =
-        out_dir.join("wasm32-unknown-unknown/release/wasi_snapshot_preview1.wasm");
-    println!("wasi command adapter: {:?}", &command_adapter);
-    let command_adapter = fs::read(&command_adapter).unwrap();
+    let adapter = out_dir.join(format!("wasi_snapshot_preview1.{name}.wasm"));
+    std::fs::copy(
+        out_dir.join("wasm32-unknown-unknown/release/wasi_snapshot_preview1.wasm"),
+        &adapter,
+    )
+    .unwrap();
+    println!("wasi {name} adapter: {:?}", &adapter);
+    fs::read(&adapter).unwrap()
+}
 
-    println!("cargo:rerun-if-changed=../../src");
-    let mut cmd = Command::new("cargo");
-    cmd.arg("build")
-        .arg("--release")
-        .current_dir("../../")
-        .arg("--target=wasm32-unknown-unknown")
-        .env("CARGO_TARGET_DIR", &out_dir)
-        .env_remove("CARGO_ENCODED_RUSTFLAGS");
-    let status = cmd.status().unwrap();
-    assert!(status.success());
+fn main() {
+    let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
-    let reactor_adapter =
-        out_dir.join("wasm32-unknown-unknown/release/wasi_snapshot_preview1.wasm");
-    println!("wasi reactor adapter: {:?}", &reactor_adapter);
-    let reactor_adapter = fs::read(&reactor_adapter).unwrap();
+    let cli_reactor_adapter = build_adapter("cli_reactor", &[]);
+    let cli_command_adapter = build_adapter(
+        "cli_command",
+        &["--no-default-features", "--features=cli-command"],
+    );
 
     // Build all test program crates
     // wasi-tests and test-programs require nightly for a feature in the `errno` crate
@@ -92,7 +92,7 @@ fn main() {
             .module(module.as_slice())
             .unwrap()
             .validate(true)
-            .adapter("wasi_snapshot_preview1", &command_adapter)
+            .adapter("wasi_snapshot_preview1", &cli_command_adapter)
             .unwrap()
             .encode()
             .expect(&format!(
@@ -117,7 +117,7 @@ fn main() {
             .module(module.as_slice())
             .unwrap()
             .validate(true)
-            .adapter("wasi_snapshot_preview1", &reactor_adapter)
+            .adapter("wasi_snapshot_preview1", &cli_reactor_adapter)
             .unwrap()
             .encode()
             .expect(&format!(

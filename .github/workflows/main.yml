@@ -44,14 +44,23 @@ jobs:
     - run: rustup default nightly
     - run: rustup target add --toolchain=stable wasm32-wasi wasm32-unknown-unknown
     - run: rustup target add --toolchain=nightly wasm32-wasi wasm32-unknown-unknown
+
+      # Debug build, default features (cli-reactor)
     - run: cargo build --target wasm32-unknown-unknown
     - run: cargo run -p verify -- ./target/wasm32-unknown-unknown/debug/wasi_snapshot_preview1.wasm
-    - run: cargo build --target wasm32-unknown-unknown --features command
+
+      # Debug build, cli-command
+    - run: cargo build --target wasm32-unknown-unknown --no-default-features --features cli-command
     - run: cargo run -p verify -- ./target/wasm32-unknown-unknown/debug/wasi_snapshot_preview1.wasm
+
+      # Release build, default features (cli-reactor)
     - run: cargo build --release --target wasm32-unknown-unknown
     - run: cargo run -p verify -- ./target/wasm32-unknown-unknown/release/wasi_snapshot_preview1.wasm
-    - run: cargo build --release --target wasm32-unknown-unknown --features command
+
+      # Release build, cli-command
+    - run: cargo build --release --target wasm32-unknown-unknown --no-default-features --features cli-command
     - run: cargo run -p verify -- ./target/wasm32-unknown-unknown/release/wasi_snapshot_preview1.wasm
+
     - run: cargo test -p host
 
   build:
@@ -64,13 +73,22 @@ jobs:
     - uses: actions/checkout@v3
     - run: rustup update stable && rustup default stable
     - run: rustup target add wasm32-wasi wasm32-unknown-unknown
-    - run: cargo build --target wasm32-unknown-unknown --release --features command
-    - run: mv target/wasm32-unknown-unknown/release/wasi_snapshot_preview1.wasm wasi_snapshot_preview1.command.wasm
+
+    # Release build, cli-command
+    - run: cargo build --target wasm32-unknown-unknown --release --no-default-features --features cli-command
+    - run: mv target/wasm32-unknown-unknown/release/wasi_snapshot_preview1.wasm wasi_snapshot_preview1.cli_command.wasm
     - uses: actions/upload-artifact@v3
       with:
-        name: wasi_snapshot_preview1.command.wasm
-        path: wasi_snapshot_preview1.command.wasm
+        name: wasi_snapshot_preview1.cli_command.wasm
+        path: wasi_snapshot_preview1.cli_command.wasm
+
+    # Release build, default features (cli-reactor)
     - run: cargo build --target wasm32-unknown-unknown --release
+    - run: mv target/wasm32-unknown-unknown/release/wasi_snapshot_preview1.wasm wasi_snapshot_preview1.cli_reactor.wasm
+    - uses: actions/upload-artifact@v3
+      with:
+        name: wasi_snapshot_preview1.cli_reactor.wasm
+        path: target/wasm32-unknown-unknown/release/wasi_snapshot_preview1.cli_reactor.wasm
 
     - run: |
         curl -L https://github.com/bytecodealliance/wit-bindgen/releases/download/wit-bindgen-cli-0.4.0/wit-bindgen-v0.4.0-x86_64-linux.tar.gz | tar xfz -
@@ -94,11 +112,6 @@ jobs:
         name: cli.rs
         path: cli.rs
 
-    - uses: actions/upload-artifact@v3
-      with:
-        name: wasi_snapshot_preview1.wasm
-        path: target/wasm32-unknown-unknown/release/wasi_snapshot_preview1.wasm
-
     - uses: marvinpinto/action-automatic-releases@latest
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       with:
@@ -107,8 +120,8 @@ jobs:
         prerelease: true
         title: "Latest Build"
         files: |
-          target/wasm32-unknown-unknown/release/wasi_snapshot_preview1.wasm
-          wasi_snapshot_preview1.command.wasm
+          wasi_snapshot_preview1.cli_reactor.wasm
+          wasi_snapshot_preview1.cli_command.wasm
           cli.c
           cli.h
           cli_component_type.o
