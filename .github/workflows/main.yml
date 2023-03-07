@@ -73,8 +73,8 @@ jobs:
     - run: cargo build --target wasm32-unknown-unknown --release
 
     - run: |
-        curl -L https://github.com/bytecodealliance/wit-bindgen/releases/download/wit-bindgen-cli-0.3.0/wit-bindgen-v0.3.0-x86_64-linux.tar.gz | tar xfz -
-        echo `pwd`/wit-bindgen-v0.3.0-x86_64-linux >> $GITHUB_PATH
+        curl -L https://github.com/bytecodealliance/wit-bindgen/releases/download/wit-bindgen-cli-0.4.0/wit-bindgen-v0.4.0-x86_64-linux.tar.gz | tar xfz -
+        echo `pwd`/wit-bindgen-v0.4.0-x86_64-linux >> $GITHUB_PATH
     - run: wit-bindgen c ./wit --world cli
     - uses: actions/upload-artifact@v3
       with:
