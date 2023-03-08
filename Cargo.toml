@@ -63,7 +63,7 @@ debug-assertions = false
 overflow-checks = false
 
 [features]
-default = ["cli-reactor"]
-cli-reactor = []
-cli-command = []
+default = ["reactor"]
+reactor = []
+command = []
 
