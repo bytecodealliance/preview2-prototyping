@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [workspace]
-members = ["verify", "host", "test-programs", "test-programs/wasi-tests", "wasi-common", "byte-array"]
+members = ["verify", "host", "test-programs", "test-programs/wasi-tests", "test-programs/reactor-tests", "wasi-common", "byte-array"]
 
 [workspace.package]
 version = "0.0.0"
@@ -29,7 +29,7 @@ system-interface = { version = "0.25.1", features = ["cap_std_impls"] }
 
 [dependencies]
 wasi = { version = "0.11.0", default-features = false }
-wit-bindgen = { git = "https://github.com/bytecodealliance/wit-bindgen", rev = "39030f9adabe581ceae7d574e4a902e37d1be6eb", default-features = false, features = ["macros"] }
+wit-bindgen = {  version = "0.4.0", default-features = false, features = ["macros"] }
 byte-array = { path = "byte-array" }
 
 [build-dependencies]
@@ -63,4 +63,7 @@ debug-assertions = false
 overflow-checks = false
 
 [features]
-command = []
+default = ["cli-reactor"]
+cli-reactor = []
+cli-command = []
+
