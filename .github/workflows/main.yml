@@ -93,7 +93,7 @@ jobs:
     - run: |
         curl -L https://github.com/bytecodealliance/wit-bindgen/releases/download/wit-bindgen-cli-0.4.0/wit-bindgen-v0.4.0-x86_64-linux.tar.gz | tar xfz -
         echo `pwd`/wit-bindgen-v0.4.0-x86_64-linux >> $GITHUB_PATH
-    - run: wit-bindgen c ./wit --world cli
+    - run: wit-bindgen c ./wit --world command
     - uses: actions/upload-artifact@v3
       with:
         name: cli.c
@@ -106,7 +106,7 @@ jobs:
       with:
         name: cli_component_type.o
         path: cli_component_type.o
-    - run: wit-bindgen rust ./wit --world cli
+    - run: wit-bindgen rust ./wit --world command
     - uses: actions/upload-artifact@v3
       with:
         name: cli.rs
