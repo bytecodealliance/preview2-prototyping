@@ -52,7 +52,6 @@ pub unsafe extern "C" fn command(
     stderr: OutputStream,
     args_ptr: *const WasmStr,
     args_len: usize,
-    preopens: PreopenList,
 ) -> u32 {
     State::with_mut(|state| {
         // Initialization of `State` automatically fills in some dummy

@@ -28,6 +28,5 @@ default world cli {
     stdout: output-stream,
     stderr: output-stream,
     args: list<string>,
-    preopens: list<tuple<descriptor, string>>,
   ) -> result
 }
