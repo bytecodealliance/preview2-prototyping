@@ -2,10 +2,28 @@
 //!
 //! We're avoiding static initializers, so we can't have things like string
 //! literals. Replace the standard assert macros with simpler implementations.
+
+// When built as a command, the adapter exists in a world which does not have
+// a logging console, but is passed stdin, stdout, and stderr as part of the
+// `main` entrypoint. We write stderr OutputStream provided to `main` to a
+// global before any other execution, so that error printing does not need any
+// information stored in State.
+#[cfg(feature = "command")]
 #[allow(dead_code)]
 #[doc(hidden)]
 pub fn print(message: &[u8]) {
-    let _ = unsafe { crate::bindings::streams::write(crate::get_stderr_stream(), message) };
+    let _ = crate::bindings::streams::write(unsafe { crate::get_stderr_stream() }, message);
+}
+
+// When built as a reactor, the adapter exists in a world which has a wasi
+// logging interface at console. By convention, we use the context string
+// "stderr" to provide stderr output on the console.
+#[cfg(feature = "reactor")]
+#[allow(dead_code)]
+#[doc(hidden)]
+pub fn print(message: &[u8]) {
+    let stderr = byte_array::str!("stderr");
+    crate::bindings::console::log(crate::bindings::console::Level::Info, &stderr, message);
 }
 
 /// A minimal `eprint` for debugging.

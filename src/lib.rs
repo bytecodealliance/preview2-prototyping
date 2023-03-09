@@ -2407,6 +2407,14 @@ extern "C" {
     fn set_state_ptr(state: *const RefCell<State>);
     fn get_allocation_state() -> AllocationState;
     fn set_allocation_state(state: AllocationState);
+}
+
+#[cfg(feature = "command")]
+#[allow(improper_ctypes)]
+extern "C" {
+    // stderr_stream global is only actually used when built as command.
+    // It provides a way for fatal errors (i.e. crate::macros::unreachable!())
+    // to report some context before the instance dies.
     fn get_stderr_stream() -> Fd;
     fn set_stderr_stream(fd: Fd);
 }
