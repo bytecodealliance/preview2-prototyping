@@ -56,7 +56,23 @@ async fn run_reactor_tests(mut store: Store<WasiCtx>, reactor: TestReactor) -> R
         .await?;
     assert_eq!(r, 4);
 
+    // Check behavior of undefined variables
+    let r = reactor
+        .call_add_strings(&mut store, &["hopefully undefined", "$BAD_DOG"])
+        .await?;
+    assert_eq!(r, 6);
+
     let contents = reactor.call_get_strings(&mut store).await?;
-    assert_eq!(contents, &["hello", "gussie", "hello again", "gussie"]);
+    assert_eq!(
+        contents,
+        &[
+            "hello",
+            "gussie",
+            "hello again",
+            "gussie",
+            "hopefully undefined",
+            "undefined"
+        ]
+    );
     Ok(())
 }

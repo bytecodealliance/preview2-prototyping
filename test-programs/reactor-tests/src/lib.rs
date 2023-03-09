@@ -11,8 +11,14 @@ impl TestReactor for T {
         for s in ss {
             match s.split_once("$") {
                 Some((prefix, var)) if prefix.is_empty() => match std::env::var(var) {
-                    Ok(val) => unsafe { STATE.push(val) },
-                    Err(_) => unsafe { STATE.push("undefined".to_owned()) },
+                    Ok(val) => {
+                        println!("environment {s:?} is {val:?}");
+                        unsafe { STATE.push(val) }
+                    }
+                    Err(_) => {
+                        eprintln!("environment does not contain {s:?} ");
+                        unsafe { STATE.push("undefined".to_owned()) }
+                    }
                 },
                 _ => unsafe { STATE.push(s) },
             }
