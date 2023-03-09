@@ -18,5 +18,4 @@ default world reactor {
   import environment: pkg.environment
   import environment-preopens: pkg.environment-preopens
   import exit: pkg.exit
-  import stderr: pkg.stderr
 }

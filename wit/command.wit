@@ -18,7 +18,6 @@ default world command {
   import environment: pkg.environment
   import environment-preopens: pkg.environment-preopens
   import exit: pkg.exit
-  import stderr: pkg.stderr
 
   use io.streams.{input-stream, output-stream}
   use filesystem.filesystem.{descriptor}
