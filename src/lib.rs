@@ -1,8 +1,12 @@
 #![allow(unused_variables)] // TODO: remove this when more things are implemented
 
+#[cfg(feature = "reactor")]
+use crate::bindings::console;
 use crate::bindings::{
     exit, filesystem, instance_monotonic_clock, instance_wall_clock, monotonic_clock, network,
-    poll, random, streams, tcp, wall_clock,
+    poll, random, streams,
+    streams::{InputStream, OutputStream},
+    tcp, wall_clock,
 };
 use core::arch::wasm32;
 use core::cell::{Cell, RefCell, UnsafeCell};
@@ -13,7 +17,6 @@ use core::mem::{self, align_of, forget, replace, size_of, ManuallyDrop, MaybeUni
 use core::ptr::{self, null_mut};
 use core::slice;
 use poll::Pollable;
-use streams::{InputStream, OutputStream};
 use wasi::*;
 
 #[cfg(all(feature = "command", feature = "reactor"))]
@@ -548,7 +551,8 @@ pub unsafe extern "C" fn fd_fdstat_get(fd: Fd, stat: *mut Fdstat) -> Errno {
             });
             Ok(())
         }
-        Descriptor::Stderr => {
+        #[cfg(feature = "reactor")]
+        Descriptor::Console(_) => {
             let fs_filetype = FILETYPE_UNKNOWN;
             let fs_flags = 0;
             let fs_rights_base = !RIGHTS_FD_READ;
@@ -887,7 +891,9 @@ pub unsafe extern "C" fn fd_read(
                     Ok(())
                 }
             }
-            Descriptor::Stderr | Descriptor::Closed(_) => Err(ERRNO_BADF),
+            #[cfg(feature = "reactor")]
+            Descriptor::Console(_) => Err(ERRNO_BADF),
+            Descriptor::Closed(_) => Err(ERRNO_BADF),
         }
     })
 }
@@ -1252,8 +1258,14 @@ pub unsafe extern "C" fn fd_write(
                 *nwritten = bytes as usize;
                 Ok(())
             }
-            Descriptor::Stderr => {
-                crate::macros::print(bytes);
+            #[cfg(feature = "reactor")]
+            Descriptor::Console(c) => {
+                // TODO: buffer full lines here
+                let ctx = match c {
+                    Console::Stdout => byte_array::str!("stdout"),
+                    Console::Stderr => byte_array::str!("stderr"),
+                };
+                console::log(console::Level::Info, &ctx, bytes);
                 *nwritten = len;
                 Ok(())
             }
@@ -2137,7 +2149,14 @@ enum Descriptor {
     /// Input and/or output wasi-streams, along with stream metadata.
     Streams(Streams),
 
-    /// Writes to `fd_write` will go to the `wasi-stderr` API.
+    #[cfg(feature = "reactor")]
+    /// Writes to the logging console
+    Console(Console),
+}
+
+#[cfg(feature = "reactor")]
+enum Console {
+    Stdout,
     Stderr,
 }
 
@@ -2226,7 +2245,8 @@ impl Drop for Descriptor {
                     StreamType::EmptyStdin | StreamType::Unknown => {}
                 }
             }
-            Descriptor::Stderr => {}
+            #[cfg(feature = "reactor")]
+            Descriptor::Console(_) => {}
             Descriptor::Closed(_) => {}
         }
     }
@@ -2524,19 +2544,40 @@ impl State {
     }
 
     fn init(&mut self) {
-        // Set up a default stdin. This will be overridden when `main`
-        // is called.
+        // Default stdin. May be overwritten by command `main` entrypoint.
         self.push_desc(Descriptor::Streams(Streams {
             input: Cell::new(None),
             output: Cell::new(None),
             type_: StreamType::Unknown,
         }))
         .trapping_unwrap();
-        // Set up a default stdout, writing to the stderr device. This will
-        // be overridden when `main` is called.
-        self.push_desc(Descriptor::Stderr).trapping_unwrap();
-        // Set up a default stderr.
-        self.push_desc(Descriptor::Stderr).trapping_unwrap();
+
+        #[cfg(feature = "command")]
+        {
+            // Default stdout and stderr. Will be overwritten by command `main` entrypoint.
+            self.push_desc(Descriptor::Streams(Streams {
+                input: Cell::new(None),
+                output: Cell::new(None),
+                type_: StreamType::Unknown,
+            }))
+            .trapping_unwrap();
+            // Default stderr. Will be overwritten by command `main` entrypoint.
+            self.push_desc(Descriptor::Streams(Streams {
+                input: Cell::new(None),
+                output: Cell::new(None),
+                type_: StreamType::Unknown,
+            }))
+            .trapping_unwrap();
+        }
+
+        #[cfg(feature = "reactor")]
+        {
+            // Stdout and stderr go to the console
+            self.push_desc(Descriptor::Console(Console::Stdout))
+                .trapping_unwrap();
+            self.push_desc(Descriptor::Console(Console::Stderr))
+                .trapping_unwrap();
+        }
     }
 
     fn push_desc(&self, desc: Descriptor) -> Result<Fd, Errno> {
@@ -2587,7 +2628,8 @@ impl State {
         match self.get(fd)? {
             Descriptor::Streams(streams) => Ok(streams),
             Descriptor::Closed(_) => Err(ERRNO_BADF),
-            _ => Err(error),
+            #[cfg(feature = "reactor")]
+            Descriptor::Console(_) => Err(error),
         }
     }
 
@@ -2633,14 +2675,18 @@ impl State {
     fn get_read_stream(&self, fd: Fd) -> Result<InputStream, Errno> {
         match self.get(fd)? {
             Descriptor::Streams(streams) => streams.get_read_stream(),
-            Descriptor::Closed(_) | Descriptor::Stderr => Err(ERRNO_BADF),
+            #[cfg(feature = "reactor")]
+            Descriptor::Console(_) => Err(ERRNO_BADF),
+            Descriptor::Closed(_) => Err(ERRNO_BADF),
         }
     }
 
     fn get_write_stream(&self, fd: Fd) -> Result<OutputStream, Errno> {
         match self.get(fd)? {
             Descriptor::Streams(streams) => streams.get_write_stream(),
-            Descriptor::Closed(_) | Descriptor::Stderr => Err(ERRNO_BADF),
+            #[cfg(feature = "reactor")]
+            Descriptor::Console(_) => Err(ERRNO_BADF),
+            Descriptor::Closed(_) => Err(ERRNO_BADF),
         }
     }
 
