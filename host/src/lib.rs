@@ -16,8 +16,14 @@ type HostResult<T, E> = anyhow::Result<Result<T, E>>;
 
 pub mod wasi {
     // One day we'll be able to get wasmtime's bindgen to share code generated for these
-    // two worlds. Until then, lets generate both, and ignore everything in reactor except
-    // for the console (the sole item provided exclusively by the reactor world).
+    // two worlds. Until then, lets generate both. the reactor world is a superset of the command
+    // world, except it
+    // lacks the Command export, so lets just re-export Command.
+    //
+    // N.b. the InputStream / OutputStream types used as arguments for Command::run_main
+    // are defined in a different place than reactor::stream::{InputStream, OutputStream}
+    // but we are getting away with this at the moment because resources are just `type Foo = u32`
+    // rather than defining a new struct.
     pub mod command {
         wasmtime::component::bindgen!({
             path: "../wit",
@@ -34,21 +40,18 @@ pub mod wasi {
             async: true,
         });
     }
-    pub use command::{
-        environment, environment_preopens, exit, filesystem, instance_monotonic_clock,
+    pub use command::Command;
+    pub use reactor::{
+        console, environment, environment_preopens, exit, filesystem, instance_monotonic_clock,
         instance_network, instance_wall_clock, ip_name_lookup, monotonic_clock, network, poll,
         random, streams, tcp, tcp_create_socket, timezone, udp, udp_create_socket, wall_clock,
-        Command,
     };
-    // reactor provides a console, whereas command does not. we can get away with reusing just
-    // this interface because it doesnt reuse types from any other interfaces in the reactor
-    // world
-    pub use reactor::console;
 }
 
 // Adds all imports available to commands and reactors to the linker. This does mean that a command
 // will get away with importing a `console`, which isnt correct, but we're going to fudge it for
 // until bindgen can handle sharing code between worlds better.
+// Also: why doesnt wasmtime bindgen create one of these top-level add to linkers for us?
 pub fn add_to_linker<T: Send>(
     l: &mut wasmtime::component::Linker<T>,
     f: impl (Fn(&mut T) -> &mut WasiCtx) + Copy + Send + Sync + 'static,
