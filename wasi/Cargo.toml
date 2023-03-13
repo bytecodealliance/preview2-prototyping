@@ -1,0 +1,12 @@
+[package]
+name = "wasi"
+version = "0.12.0+wasi-snapshot-preview2"
+description = "Experimental WASI Preview2 API bindings for Rust"
+edition.workspace = true
+publish = false
+
+[dependencies]
+wit-bindgen = { workspace = true, default-features = true }
+
+[lib]
+crate-type = ["lib"]
