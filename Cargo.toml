@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [workspace]
-members = ["verify", "host", "test-programs", "test-programs/wasi-tests", "test-programs/reactor-tests", "wasi-common", "byte-array"]
+members = ["verify", "host", "test-programs", "test-programs/wasi-tests", "test-programs/reactor-tests", "wasi-common", "byte-array", "bindings"]
 
 [workspace.package]
 version = "0.0.0"
@@ -26,10 +26,11 @@ io-lifetimes = { version = "1.0.0", default-features = false }
 wasi-common = { path = "wasi-common" }
 once_cell = "1.12.0"
 system-interface = { version = "0.25.1", features = ["cap_std_impls"] }
+wit-bindgen = { version = "0.4.0" }
 
 [dependencies]
 wasi = { version = "0.11.0", default-features = false }
-wit-bindgen = { version = "0.4.0", default-features = false, features = ["macros"] }
+wit-bindgen = { workspace = true, default-features = false, features = ["macros"] }
 byte-array = { path = "byte-array" }
 
 [build-dependencies]

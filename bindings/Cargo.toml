@@ -1,0 +1,10 @@
+[package]
+name = "bindings"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+wit-bindgen = { workspace = true, default-features = true }
+
+[lib]
+crate-type = ["lib"]
