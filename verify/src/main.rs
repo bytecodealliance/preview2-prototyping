@@ -25,7 +25,26 @@ fn main() -> Result<()> {
                     let i = i?;
                     match i.ty {
                         TypeRef::Func(_) => {
-                            if !i.module.starts_with("wasi-")
+                            if i.module != "wall-clock"
+                                && i.module != "monotonic-clock"
+                                && i.module != "instance-wall-clock"
+                                && i.module != "instance-monotonic-clock"
+                                && i.module != "timezone"
+                                && i.module != "filesystem"
+                                && i.module != "instance-network"
+                                && i.module != "ip-name-lookup"
+                                && i.module != "network"
+                                && i.module != "tcp-create-socket"
+                                && i.module != "tcp"
+                                && i.module != "udp-create-socket"
+                                && i.module != "udp"
+                                && i.module != "random"
+                                && i.module != "poll"
+                                && i.module != "streams"
+                                && i.module != "environment"
+                                && i.module != "environment-preopens"
+                                && i.module != "exit"
+                                && i.module != "stderr"
                                 && i.module != "canonical_abi"
                                 && i.module != "__main_module__"
                             {

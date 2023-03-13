@@ -1,7 +1,7 @@
 use crate::{
     poll::PollableEntry,
-    wasi_io::{InputStream, OutputStream, StreamError, WasiIo},
-    wasi_poll::Pollable,
+    wasi::poll::Pollable,
+    wasi::streams::{self, InputStream, OutputStream, StreamError},
     HostResult, WasiCtx,
 };
 use wasi_common::stream::TableStreamExt;
@@ -15,7 +15,7 @@ fn convert(error: wasi_common::Error) -> anyhow::Error {
 }
 
 #[async_trait::async_trait]
-impl WasiIo for WasiCtx {
+impl streams::Host for WasiCtx {
     async fn drop_input_stream(&mut self, stream: InputStream) -> anyhow::Result<()> {
         self.table_mut()
             .delete::<Box<dyn wasi_common::InputStream>>(stream)
@@ -49,6 +49,15 @@ impl WasiIo for WasiCtx {
         Ok(Ok((buffer, end)))
     }
 
+    async fn blocking_read(
+        &mut self,
+        stream: InputStream,
+        len: u64,
+    ) -> HostResult<(Vec<u8>, bool), StreamError> {
+        // TODO: When this is really async make this block.
+        self.read(stream, len).await
+    }
+
     async fn write(
         &mut self,
         stream: OutputStream,
@@ -62,6 +71,15 @@ impl WasiIo for WasiCtx {
         let bytes_written: u64 = s.write(&bytes).await.map_err(convert)?;
 
         Ok(Ok(u64::try_from(bytes_written).unwrap()))
+    }
+
+    async fn blocking_write(
+        &mut self,
+        stream: OutputStream,
+        bytes: Vec<u8>,
+    ) -> HostResult<u64, StreamError> {
+        // TODO: When this is really async make this block.
+        self.write(stream, bytes).await
     }
 
     async fn skip(
@@ -79,6 +97,15 @@ impl WasiIo for WasiCtx {
         Ok(Ok((bytes_skipped, end)))
     }
 
+    async fn blocking_skip(
+        &mut self,
+        stream: InputStream,
+        len: u64,
+    ) -> HostResult<(u64, bool), StreamError> {
+        // TODO: When this is really async make this block.
+        self.skip(stream, len).await
+    }
+
     async fn write_zeroes(
         &mut self,
         stream: OutputStream,
@@ -92,6 +119,15 @@ impl WasiIo for WasiCtx {
         let bytes_written: u64 = s.write_zeroes(len).await.map_err(convert)?;
 
         Ok(Ok(bytes_written))
+    }
+
+    async fn blocking_write_zeroes(
+        &mut self,
+        stream: OutputStream,
+        len: u64,
+    ) -> HostResult<u64, StreamError> {
+        // TODO: When this is really async make this block.
+        self.write_zeroes(stream, len).await
     }
 
     async fn splice(
@@ -124,6 +160,16 @@ impl WasiIo for WasiCtx {
         todo!()
     }
 
+    async fn blocking_splice(
+        &mut self,
+        src: InputStream,
+        dst: OutputStream,
+        len: u64,
+    ) -> HostResult<(u64, bool), StreamError> {
+        // TODO: When this is really async make this block.
+        self.splice(src, dst, len).await
+    }
+
     async fn forward(
         &mut self,
         _src: InputStream,
@@ -153,13 +199,16 @@ impl WasiIo for WasiCtx {
         todo!()
     }
 
-    async fn subscribe_read(&mut self, stream: InputStream) -> anyhow::Result<Pollable> {
+    async fn subscribe_to_input_stream(&mut self, stream: InputStream) -> anyhow::Result<Pollable> {
         Ok(self
             .table_mut()
             .push(Box::new(PollableEntry::Read(stream)))?)
     }
 
-    async fn subscribe(&mut self, stream: OutputStream) -> anyhow::Result<Pollable> {
+    async fn subscribe_to_output_stream(
+        &mut self,
+        stream: OutputStream,
+    ) -> anyhow::Result<Pollable> {
         Ok(self
             .table_mut()
             .push(Box::new(PollableEntry::Write(stream)))?)

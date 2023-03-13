@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [workspace]
-members = ["verify", "host", "test-programs", "test-programs/wasi-tests", "wasi-common", "byte-array", "bindings"]
+members = ["verify", "host", "test-programs", "test-programs/wasi-tests", "test-programs/reactor-tests", "wasi-common", "byte-array", "bindings"]
 
 [workspace.package]
 version = "0.0.0"
@@ -29,11 +29,11 @@ system-interface = { version = "0.25.1", features = ["cap_std_impls"] }
 
 [dependencies]
 wasi = { version = "0.11.0", default-features = false }
-wit-bindgen = { version = "0.3.0", default-features = false, features = ["macros"] }
+wit-bindgen = { version = "0.4.0", default-features = false, features = ["macros"] }
 byte-array = { path = "byte-array" }
 
 [build-dependencies]
-wasm-encoder = "0.23"
+wasm-encoder = "0.24"
 object = { version = "0.29.0", default-features = false, features = ["archive"] }
 
 [lib]
@@ -54,9 +54,16 @@ strip = 'debuginfo'
 incremental = false
 opt-level = 's'
 
+# Omit assertions, which include failure messages which require string
+# initializers.
+debug-assertions = false
+
 # Omit integer overflow checks, which include failure messages which require
 # string initializers.
 overflow-checks = false
 
 [features]
+default = ["reactor"]
+reactor = []
 command = []
+

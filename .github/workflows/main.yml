@@ -42,15 +42,25 @@ jobs:
       # rust-lang/rust#105395 reaches stable.
     - run: rustup update nightly
     - run: rustup default nightly
+    - run: rustup target add --toolchain=stable wasm32-wasi wasm32-unknown-unknown
     - run: rustup target add --toolchain=nightly wasm32-wasi wasm32-unknown-unknown
+
+      # Debug build, default features (reactor)
     - run: cargo build --target wasm32-unknown-unknown
     - run: cargo run -p verify -- ./target/wasm32-unknown-unknown/debug/wasi_snapshot_preview1.wasm
-    - run: cargo build --target wasm32-unknown-unknown --features command
+
+      # Debug build, command
+    - run: cargo build --target wasm32-unknown-unknown --no-default-features --features command
     - run: cargo run -p verify -- ./target/wasm32-unknown-unknown/debug/wasi_snapshot_preview1.wasm
+
+      # Release build, default features (reactor)
     - run: cargo build --release --target wasm32-unknown-unknown
     - run: cargo run -p verify -- ./target/wasm32-unknown-unknown/release/wasi_snapshot_preview1.wasm
-    - run: cargo build --release --target wasm32-unknown-unknown --features command
+
+      # Release build, command
+    - run: cargo build --release --target wasm32-unknown-unknown --no-default-features --features command
     - run: cargo run -p verify -- ./target/wasm32-unknown-unknown/release/wasi_snapshot_preview1.wasm
+
     - run: cargo test -p host
 
   build:
@@ -63,40 +73,44 @@ jobs:
     - uses: actions/checkout@v3
     - run: rustup update stable && rustup default stable
     - run: rustup target add wasm32-wasi wasm32-unknown-unknown
-    - run: cargo build --target wasm32-unknown-unknown --release --features command
+
+    # Release build, command
+    - run: cargo build --target wasm32-unknown-unknown --release --no-default-features --features command
     - run: mv target/wasm32-unknown-unknown/release/wasi_snapshot_preview1.wasm wasi_snapshot_preview1.command.wasm
     - uses: actions/upload-artifact@v3
       with:
         name: wasi_snapshot_preview1.command.wasm
         path: wasi_snapshot_preview1.command.wasm
+
+    # Release build, default features (reactor)
     - run: cargo build --target wasm32-unknown-unknown --release
+    - run: mv target/wasm32-unknown-unknown/release/wasi_snapshot_preview1.wasm wasi_snapshot_preview1.reactor.wasm
+    - uses: actions/upload-artifact@v3
+      with:
+        name: wasi_snapshot_preview1.reactor.wasm
+        path: target/wasm32-unknown-unknown/release/wasi_snapshot_preview1.reactor.wasm
 
     - run: |
-        curl -L https://github.com/bytecodealliance/wit-bindgen/releases/download/wit-bindgen-cli-0.3.0/wit-bindgen-v0.3.0-x86_64-linux.tar.gz | tar xfz -
-        echo `pwd`/wit-bindgen-v0.3.0-x86_64-linux >> $GITHUB_PATH
-    - run: wit-bindgen c ./wit --world wasi-command
+        curl -L https://github.com/bytecodealliance/wit-bindgen/releases/download/wit-bindgen-cli-0.4.0/wit-bindgen-v0.4.0-x86_64-linux.tar.gz | tar xfz -
+        echo `pwd`/wit-bindgen-v0.4.0-x86_64-linux >> $GITHUB_PATH
+    - run: wit-bindgen c ./wit --world command
     - uses: actions/upload-artifact@v3
       with:
-        name: wasi_command.c
-        path: wasi_command.c
+        name: cli.c
+        path: cli.c
     - uses: actions/upload-artifact@v3
       with:
-        name: wasi_command.h
-        path: wasi_command.h
+        name: cli.h
+        path: cli.h
     - uses: actions/upload-artifact@v3
       with:
-        name: wasi_command_component_type.o
-        path: wasi_command_component_type.o
-    - run: wit-bindgen rust ./wit --world wasi-command
+        name: cli_component_type.o
+        path: cli_component_type.o
+    - run: wit-bindgen rust ./wit --world command
     - uses: actions/upload-artifact@v3
       with:
-        name: wasi-command.rs
-        path: wasi-command.rs
-
-    - uses: actions/upload-artifact@v3
-      with:
-        name: wasi_snapshot_preview1.wasm
-        path: target/wasm32-unknown-unknown/release/wasi_snapshot_preview1.wasm
+        name: cli.rs
+        path: cli.rs
 
     - uses: marvinpinto/action-automatic-releases@latest
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -106,9 +120,9 @@ jobs:
         prerelease: true
         title: "Latest Build"
         files: |
-          target/wasm32-unknown-unknown/release/wasi_snapshot_preview1.wasm
+          wasi_snapshot_preview1.reactor.wasm
           wasi_snapshot_preview1.command.wasm
-          wasi_command.c
-          wasi_command.h
-          wasi_command_component_type.o
-          wasi-command.rs
+          cli.c
+          cli.h
+          cli_component_type.o
+          cli.rs
