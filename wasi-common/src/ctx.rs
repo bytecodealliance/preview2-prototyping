@@ -1,6 +1,7 @@
 use crate::clocks::WasiClocks;
 use crate::dir::WasiDir;
 use crate::file::WasiFile;
+use crate::network::{AddressFamily, WasiNetwork};
 use crate::sched::WasiSched;
 use crate::stream::{InputStream, OutputStream};
 use crate::table::Table;
@@ -15,6 +16,9 @@ pub struct WasiCtx {
     pub table: Table,
     pub env: Vec<(String, String)>,
     pub preopens: Vec<(Box<dyn WasiDir>, String)>,
+    pub network_creator: Box<dyn Fn() -> Result<Box<dyn WasiNetwork>, Error> + Send + Sync>,
+    pub tcp_socket_creator:
+        Box<dyn Fn(AddressFamily) -> Result<Box<dyn WasiTcpSocket>, Error> + Send + Sync>,
 }
 
 impl WasiCtx {
@@ -23,6 +27,10 @@ impl WasiCtx {
         clocks: WasiClocks,
         sched: Box<dyn WasiSched>,
         table: Table,
+        network_creator: Box<dyn Fn() -> Result<Box<dyn WasiNetwork>, Error> + Send + Sync>,
+        tcp_socket_creator: Box<
+            dyn Fn(AddressFamily) -> Result<Box<dyn WasiTcpSocket>, Error> + Send + Sync,
+        >,
     ) -> Self {
         let mut s = WasiCtx {
             random,
@@ -31,6 +39,8 @@ impl WasiCtx {
             table,
             env: Vec::new(),
             preopens: Vec::new(),
+            network_creator,
+            tcp_socket_creator,
         };
         s.set_stdin(Box::new(crate::pipe::ReadPipe::new(std::io::empty())));
         s.set_stdout(Box::new(crate::pipe::WritePipe::new(std::io::sink())));

@@ -45,13 +45,14 @@ pub use cap_std::net::TcpListener;
 pub use clocks::clocks_ctx;
 pub use sched::sched_ctx;
 
-use crate::net::TcpSocket;
+use crate::net::{Network, TcpSocket};
 use cap_rand::{Rng, RngCore, SeedableRng};
 use wasi_common::{
+    network::{AddressFamily, WasiNetwork},
     stream::{InputStream, OutputStream},
     table::Table,
     tcp_socket::WasiTcpSocket,
-    WasiCtx,
+    Error, WasiCtx,
 };
 
 pub struct WasiCtxBuilder(WasiCtx);
@@ -63,6 +64,8 @@ impl WasiCtxBuilder {
             clocks_ctx(),
             sched_ctx(),
             Table::new(),
+            Box::new(create_network),
+            Box::new(create_tcp_socket),
         ))
     }
     pub fn stdin(mut self, f: Box<dyn InputStream>) -> Self {
@@ -104,6 +107,16 @@ impl WasiCtxBuilder {
     pub fn build(self) -> WasiCtx {
         self.0
     }
+}
+
+fn create_network() -> Result<Box<dyn WasiNetwork>, Error> {
+    let network: Box<dyn WasiNetwork> = Box::new(Network::new());
+    Ok(network)
+}
+
+fn create_tcp_socket(address_family: AddressFamily) -> Result<Box<dyn WasiTcpSocket>, Error> {
+    let socket: Box<dyn WasiTcpSocket> = Box::new(TcpSocket::new(address_family));
+    Ok(socket)
 }
 
 pub fn random_ctx() -> Box<dyn RngCore + Send + Sync> {
