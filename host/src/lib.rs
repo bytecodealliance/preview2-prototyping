@@ -1,4 +1,6 @@
 mod clocks;
+#[cfg(feature = "http")]
+mod default_outgoing_http;
 mod env;
 mod exit;
 mod filesystem;
@@ -47,6 +49,8 @@ pub fn add_to_linker<T: Send>(
     wasi::exit::add_to_linker(l, f)?;
     wasi::environment::add_to_linker(l, f)?;
     wasi::environment_preopens::add_to_linker(l, f)?;
+    #[cfg(feature = "http")]
+    wasi::default_outgoing_http::add_to_linker(l, f)?;
     #[cfg(feature = "http")]
     wasi::http::add_to_linker(l, f)?;
     Ok(())
