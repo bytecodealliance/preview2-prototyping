@@ -1,0 +1,4 @@
+default world little {
+  import environment-preopens: pkg.environment-preopens
+  import stderr: pkg.stderr
+}

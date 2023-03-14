@@ -674,3 +674,16 @@ async fn run_export_cabi_realloc(mut store: Store<WasiCtx>, wasi: Command) -> Re
     .await?
     .map_err(|()| anyhow::anyhow!("command returned with failing exit status"))
 }
+
+async fn run_small(mut store: Store<WasiCtx>, wasi: Command) -> Result<()> {
+    wasi.call_main(
+        &mut store,
+        0 as InputStream,
+        1 as OutputStream,
+        2 as OutputStream,
+        &[],
+        &[],
+    )
+    .await?
+    .map_err(|()| anyhow::anyhow!("command returned with failing exit status"))
+}
