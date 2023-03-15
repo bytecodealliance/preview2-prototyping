@@ -35,7 +35,8 @@ fn build_adapter(name: &str, features: &[&str]) -> Vec<u8> {
 fn main() {
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
-    let reactor_adapter = build_adapter("reactor", &[]);
+    let reactor_adapter =
+        build_adapter("reactor", &["--no-default-features", "--features=reactor"]);
     let command_adapter =
         build_adapter("command", &["--no-default-features", "--features=command"]);
 

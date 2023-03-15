@@ -2024,9 +2024,9 @@ dependencies = [
 
 [[package]]
 name = "wit-component"
-version = "0.7.3"
+version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e93680c292afbad08ec462c901714ba53e5109076003e53a82e584f3aa319bc"
+checksum = "ed04310239706efc71cc8b995cb0226089c5b5fd260c3bd800a71486bd3cec97"
 dependencies = [
  "anyhow",
  "bitflags",

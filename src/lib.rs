@@ -552,7 +552,7 @@ pub unsafe extern "C" fn fd_fdstat_get(fd: Fd, stat: *mut Fdstat) -> Errno {
             Ok(())
         }
         #[cfg(feature = "reactor")]
-        Descriptor::Console(_) => {
+        Descriptor::Console { .. } => {
             let fs_filetype = FILETYPE_UNKNOWN;
             let fs_flags = 0;
             let fs_rights_base = !RIGHTS_FD_READ;
@@ -892,7 +892,7 @@ pub unsafe extern "C" fn fd_read(
                 }
             }
             #[cfg(feature = "reactor")]
-            Descriptor::Console(_) => Err(ERRNO_BADF),
+            Descriptor::Console { .. } => Err(ERRNO_BADF),
             Descriptor::Closed(_) => Err(ERRNO_BADF),
         }
     })
@@ -1239,7 +1239,7 @@ pub unsafe extern "C" fn fd_write(
         let len = (*iovs_ptr).buf_len;
         let bytes = slice::from_raw_parts(ptr, len);
 
-        State::with(|state| match state.get(fd)? {
+        State::with_mut(|state| match state.get_mut(fd)? {
             Descriptor::Streams(streams) => {
                 let wasi_stream = streams.get_write_stream()?;
                 let bytes = streams::write(wasi_stream, bytes).map_err(|_| ERRNO_IO)?;
@@ -1259,14 +1259,13 @@ pub unsafe extern "C" fn fd_write(
                 Ok(())
             }
             #[cfg(feature = "reactor")]
-            Descriptor::Console(c) => {
-                // TODO: buffer full lines here
-                let ctx = match c {
+            Descriptor::Console { console, buffer } => {
+                let ctx = match console {
                     Console::Stdout => byte_array::str!("stdout"),
                     Console::Stderr => byte_array::str!("stderr"),
                 };
-                console::log(console::Level::Info, &ctx, bytes);
-                *nwritten = len;
+                *nwritten = buffer
+                    .write_as_lines(bytes, |line| console::log(console::Level::Info, &ctx, line));
                 Ok(())
             }
             Descriptor::Closed(_) => Err(ERRNO_BADF),
@@ -2151,13 +2150,159 @@ enum Descriptor {
 
     #[cfg(feature = "reactor")]
     /// Writes to the logging console
-    Console(Console),
+    Console {
+        console: Console,
+        buffer: ConsoleBuffer,
+    },
 }
 
 #[cfg(feature = "reactor")]
 enum Console {
     Stdout,
     Stderr,
+}
+
+#[cfg(feature = "reactor")]
+struct ConsoleBuffer {
+    ptr: *mut u8,
+    size: usize,
+    used: usize,
+}
+
+#[cfg(feature = "reactor")]
+impl ConsoleBuffer {
+    fn new(arena: &BumpArena, size: usize) -> Self {
+        let ptr = arena.alloc(1, size);
+        ConsoleBuffer { ptr, size, used: 0 }
+    }
+    fn as_slice(&self) -> &[u8] {
+        unsafe { std::slice::from_raw_parts(self.ptr as *const _, self.used) }
+    }
+    fn has_capacity_for(&self, bytes: &[u8]) -> bool {
+        bytes.len() < (self.size - self.used)
+    }
+    fn extend(&mut self, bytes: &[u8]) {
+        if !self.has_capacity_for(bytes) {
+            unreachable!("precondition violated: capacity not available for buffer extension")
+        }
+        let len = bytes.len();
+        unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), self.ptr.add(self.used), len) };
+        self.used = self.used + len;
+    }
+    fn clear(&mut self) {
+        self.used = 0
+    }
+
+    fn write_as_lines(&mut self, input: &[u8], with_line: impl Fn(&[u8])) -> usize {
+        // Now, if you were sensible, you'd just use `std::std::split_inclusive` for this
+        // whole mess. Unfortunately, this adapter is cursed, and we have to avoid any sort
+        // of reachable panics, to prevent the panic machinery from getting linked in,
+        // and thereby giving the wasm a data and element section. Not only does split_inclusive
+        // pull in panic machinery, but so does any use of the a slice range operator, so we
+        // can't even define an iterator where next is implemented with `return
+        // Some(self.slice[start..end])`. so, this implementation does the very tedious and unsafe
+        // thing, which is to turn the slice into a raw pointer and len, and then unsafe
+        // materialize a sub-slice.
+        struct LineSplitter<'a> {
+            ptr: *const u8,
+            len: usize,
+            position: usize,
+            lifetime: std::marker::PhantomData<&'a ()>,
+        }
+        impl<'a> LineSplitter<'a> {
+            fn new(bytes: &'a [u8]) -> Self {
+                LineSplitter {
+                    ptr: bytes.as_ptr(),
+                    len: bytes.len(),
+                    position: 0,
+                    lifetime: std::marker::PhantomData,
+                }
+            }
+        }
+
+        impl<'a> Iterator for LineSplitter<'a> {
+            type Item = &'a [u8];
+            fn next(&mut self) -> Option<&'a [u8]> {
+                let position = self.position;
+                if position >= self.len {
+                    None
+                } else {
+                    unsafe {
+                        for ix in position..self.len {
+                            if *self.ptr.add(ix) == b'\n' {
+                                self.position = ix + 1;
+                                return Some(std::slice::from_raw_parts(
+                                    self.ptr.add(position),
+                                    (ix + 1) - position,
+                                ));
+                            }
+                        }
+                        return Some(std::slice::from_raw_parts(
+                            self.ptr.add(position),
+                            self.len - position,
+                        ));
+                    }
+                }
+            }
+        }
+
+        let mut consumed = 0;
+        let mut split_inclusive_iter = LineSplitter::new(input);
+
+        // Treat the first segment of input differently: it could be the rest of the
+        // buffered line
+        if let Some(first_segment) = split_inclusive_iter.next() {
+            if first_segment.last() == Some(&b'\n') {
+                eprintln!("first: whole line");
+                // Got the line ending corresponding to the fragment in the buffer
+                let extension = &first_segment[..first_segment.len() - 1];
+                if self.has_capacity_for(extension) {
+                    consumed += first_segment.len();
+                    self.extend(extension);
+                    with_line(self.as_slice());
+                    self.clear();
+                } else {
+                    unreachable!("FIXME handle full buffer case")
+                }
+            } else {
+                eprint!("first: just a segment");
+                // Buffer more of this line
+                if self.has_capacity_for(first_segment) {
+                    consumed += first_segment.len();
+                    self.extend(first_segment);
+                } else {
+                    unreachable!("FIXME handle full buffer case")
+                }
+            }
+        }
+
+        // If there are any subsequent segments, the previous must have ended with
+        // a newline so the buffer is flushed:
+        while let Some(segment) = split_inclusive_iter.next() {
+            if segment.last() == Some(&b'\n') {
+                eprint!("later: whole line");
+                consumed += segment.len();
+                with_line(&segment[..segment.len() - 1]);
+            } else {
+                if self.has_capacity_for(segment) {
+                    eprintln!("last: buffering segment");
+                    // This is the last incomplete line fragment:
+                    consumed += segment.len();
+                    self.extend(segment);
+                } else {
+                    eprintln!("last: flushing segment");
+                    // This segment will not fit in the buffer, so we have to give up on
+                    // line buffering it and just emit it as a line.
+                    consumed += segment.len();
+                    with_line(segment)
+                }
+            }
+        }
+        if consumed != input.len() {
+            unreachable!("expected to consume whole input")
+        }
+        consumed
+    }
 }
 
 /// Input and/or output wasi-streams, along with a stream type that
@@ -2246,7 +2391,7 @@ impl Drop for Descriptor {
                 }
             }
             #[cfg(feature = "reactor")]
-            Descriptor::Console(_) => {}
+            Descriptor::Console { .. } => {}
             Descriptor::Closed(_) => {}
         }
     }
@@ -2573,10 +2718,16 @@ impl State {
         #[cfg(feature = "reactor")]
         {
             // Stdout and stderr go to the console
-            self.push_desc(Descriptor::Console(Console::Stdout))
-                .trapping_unwrap();
-            self.push_desc(Descriptor::Console(Console::Stderr))
-                .trapping_unwrap();
+            self.push_desc(Descriptor::Console {
+                console: Console::Stdout,
+                buffer: ConsoleBuffer::new(&self.long_lived_arena, 1024),
+            })
+            .trapping_unwrap();
+            self.push_desc(Descriptor::Console {
+                console: Console::Stderr,
+                buffer: ConsoleBuffer::new(&self.long_lived_arena, 1024),
+            })
+            .trapping_unwrap();
         }
     }
 
@@ -2629,7 +2780,7 @@ impl State {
             Descriptor::Streams(streams) => Ok(streams),
             Descriptor::Closed(_) => Err(ERRNO_BADF),
             #[cfg(feature = "reactor")]
-            Descriptor::Console(_) => Err(error),
+            Descriptor::Console { .. } => Err(error),
         }
     }
 
@@ -2676,7 +2827,7 @@ impl State {
         match self.get(fd)? {
             Descriptor::Streams(streams) => streams.get_read_stream(),
             #[cfg(feature = "reactor")]
-            Descriptor::Console(_) => Err(ERRNO_BADF),
+            Descriptor::Console { .. } => Err(ERRNO_BADF),
             Descriptor::Closed(_) => Err(ERRNO_BADF),
         }
     }
@@ -2685,7 +2836,7 @@ impl State {
         match self.get(fd)? {
             Descriptor::Streams(streams) => streams.get_write_stream(),
             #[cfg(feature = "reactor")]
-            Descriptor::Console(_) => Err(ERRNO_BADF),
+            Descriptor::Console { .. } => Err(ERRNO_BADF),
             Descriptor::Closed(_) => Err(ERRNO_BADF),
         }
     }

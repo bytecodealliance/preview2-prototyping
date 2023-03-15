@@ -44,7 +44,7 @@ fn main() -> Result<()> {
                                 && i.module != "environment"
                                 && i.module != "environment-preopens"
                                 && i.module != "exit"
-                                && i.module != "stderr"
+                                && i.module != "console"
                                 && i.module != "canonical_abi"
                                 && i.module != "__main_module__"
                             {
