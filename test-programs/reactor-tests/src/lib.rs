@@ -16,7 +16,7 @@ impl TestReactor for T {
                         unsafe { STATE.push(val) }
                     }
                     Err(_) => {
-                        eprintln!("environment does not contain {s:?} ");
+                        eprintln!("environment does not contain {s:?}");
                         unsafe { STATE.push("undefined".to_owned()) }
                     }
                 },

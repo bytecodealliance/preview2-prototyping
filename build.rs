@@ -2,24 +2,30 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
-    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    if env::var("TARGET").unwrap() == "wasm32-unknown-unknown" {
+        let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
-    let wasm = build_raw_intrinsics();
-    let archive = build_archive(&wasm);
+        let wasm = build_raw_intrinsics();
+        let archive = build_archive(&wasm);
 
-    std::fs::write(out_dir.join("libwasm-raw-intrinsics.a"), &archive).unwrap();
-    println!("cargo:rustc-link-lib=static=wasm-raw-intrinsics");
-    println!(
-        "cargo:rustc-link-search=native={}",
-        out_dir.to_str().unwrap()
-    );
+        std::fs::write(out_dir.join("libwasm-raw-intrinsics.a"), &archive).unwrap();
+        println!("cargo:rustc-link-lib=static=wasm-raw-intrinsics");
+        println!(
+            "cargo:rustc-link-search=native={}",
+            out_dir.to_str().unwrap()
+        );
 
-    // Some specific flags to `wasm-ld` to inform the shape of this adapter.
-    // Notably we're importing memory from the main module and additionally our
-    // own module has no stack at all since it's specifically allocated at
-    // startup.
-    println!("cargo:rustc-link-arg=--import-memory");
-    println!("cargo:rustc-link-arg=-zstack-size=0");
+        // Some specific flags to `wasm-ld` to inform the shape of this adapter.
+        // Notably we're importing memory from the main module and additionally our
+        // own module has no stack at all since it's specifically allocated at
+        // startup.
+        println!("cargo:rustc-link-arg=--import-memory");
+        println!("cargo:rustc-link-arg=-zstack-size=0");
+    } else {
+        println!(
+            "native build - gonna need a raw intrinsics implementation but ill fix that in a minute"
+        );
+    }
 }
 
 /// This function will produce a wasm module which is itself an object file

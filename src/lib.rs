@@ -8,7 +8,6 @@ use crate::bindings::{
     streams::{InputStream, OutputStream},
     tcp, wall_clock,
 };
-use core::arch::wasm32;
 use core::cell::{Cell, RefCell, UnsafeCell};
 use core::cmp::min;
 use core::ffi::c_void;
@@ -22,6 +21,7 @@ use wasi::*;
 #[cfg(all(feature = "command", feature = "reactor"))]
 compile_error!("only one of the `command` and `reactor` features may be selected at a time");
 
+#[cfg(target_arch = "wasm32")]
 #[macro_use]
 mod macros;
 
@@ -2193,67 +2193,14 @@ impl ConsoleBuffer {
         self.used = 0
     }
 
-    fn write_as_lines(&mut self, input: &[u8], with_line: impl Fn(&[u8])) -> usize {
-        // Now, if you were sensible, you'd just use `std::std::split_inclusive` for this
-        // whole mess. Unfortunately, this adapter is cursed, and we have to avoid any sort
-        // of reachable panics, to prevent the panic machinery from getting linked in,
-        // and thereby giving the wasm a data and element section. Not only does split_inclusive
-        // pull in panic machinery, but so does any use of the a slice range operator, so we
-        // can't even define an iterator where next is implemented with `return
-        // Some(self.slice[start..end])`. so, this implementation does the very tedious and unsafe
-        // thing, which is to turn the slice into a raw pointer and len, and then unsafe
-        // materialize a sub-slice.
-        struct LineSplitter<'a> {
-            ptr: *const u8,
-            len: usize,
-            position: usize,
-            lifetime: std::marker::PhantomData<&'a ()>,
-        }
-        impl<'a> LineSplitter<'a> {
-            fn new(bytes: &'a [u8]) -> Self {
-                LineSplitter {
-                    ptr: bytes.as_ptr(),
-                    len: bytes.len(),
-                    position: 0,
-                    lifetime: std::marker::PhantomData,
-                }
-            }
-        }
-
-        impl<'a> Iterator for LineSplitter<'a> {
-            type Item = &'a [u8];
-            fn next(&mut self) -> Option<&'a [u8]> {
-                let position = self.position;
-                if position >= self.len {
-                    None
-                } else {
-                    unsafe {
-                        for ix in position..self.len {
-                            if *self.ptr.add(ix) == b'\n' {
-                                self.position = ix + 1;
-                                return Some(std::slice::from_raw_parts(
-                                    self.ptr.add(position),
-                                    (ix + 1) - position,
-                                ));
-                            }
-                        }
-                        return Some(std::slice::from_raw_parts(
-                            self.ptr.add(position),
-                            self.len - position,
-                        ));
-                    }
-                }
-            }
-        }
-
+    fn write_as_lines(&mut self, input: &[u8], mut with_line: impl FnMut(&[u8])) -> usize {
         let mut consumed = 0;
-        let mut split_inclusive_iter = LineSplitter::new(input);
+        let mut split_inclusive_iter = splitter::LineSplitter::new(input);
 
         // Treat the first segment of input differently: it could be the rest of the
         // buffered line
         if let Some(first_segment) = split_inclusive_iter.next() {
             if first_segment.last() == Some(&b'\n') {
-                eprintln!("first: whole line");
                 // Got the line ending corresponding to the fragment in the buffer
                 let extension = &first_segment[..first_segment.len() - 1];
                 if self.has_capacity_for(extension) {
@@ -2265,7 +2212,6 @@ impl ConsoleBuffer {
                     unreachable!("FIXME handle full buffer case")
                 }
             } else {
-                eprint!("first: just a segment");
                 // Buffer more of this line
                 if self.has_capacity_for(first_segment) {
                     consumed += first_segment.len();
@@ -2280,17 +2226,14 @@ impl ConsoleBuffer {
         // a newline so the buffer is flushed:
         while let Some(segment) = split_inclusive_iter.next() {
             if segment.last() == Some(&b'\n') {
-                eprint!("later: whole line");
                 consumed += segment.len();
                 with_line(&segment[..segment.len() - 1]);
             } else {
                 if self.has_capacity_for(segment) {
-                    eprintln!("last: buffering segment");
                     // This is the last incomplete line fragment:
                     consumed += segment.len();
                     self.extend(segment);
                 } else {
-                    eprintln!("last: flushing segment");
                     // This segment will not fit in the buffer, so we have to give up on
                     // line buffering it and just emit it as a line.
                     consumed += segment.len();
@@ -2298,10 +2241,195 @@ impl ConsoleBuffer {
                 }
             }
         }
-        if consumed != input.len() {
-            unreachable!("expected to consume whole input")
-        }
         consumed
+    }
+}
+
+#[cfg(feature = "reactor")]
+mod splitter {
+    // Now, if you were sensible, you'd just use `std::std::split_inclusive` for this
+    // whole mess. Unfortunately, this adapter is cursed, and we have to avoid any sort
+    // of reachable panics, to prevent the panic machinery from getting linked in,
+    // and thereby giving the wasm a data and element section. Not only does split_inclusive
+    // pull in panic machinery, but so does any use of the a slice range operator, so we
+    // can't even define an iterator where next is implemented with `return
+    // Some(self.slice[start..end])`. so, this implementation does the very tedious and unsafe
+    // thing, which is to turn the slice into a raw pointer and len, and then unsafe
+    // materialize a sub-slice.
+    pub struct LineSplitter<'a> {
+        ptr: *const u8,
+        len: usize,
+        position: usize,
+        lifetime: std::marker::PhantomData<&'a ()>,
+    }
+    impl<'a> LineSplitter<'a> {
+        pub fn new(bytes: &'a [u8]) -> Self {
+            LineSplitter {
+                ptr: bytes.as_ptr(),
+                len: bytes.len(),
+                position: 0,
+                lifetime: std::marker::PhantomData,
+            }
+        }
+    }
+
+    impl<'a> Iterator for LineSplitter<'a> {
+        type Item = &'a [u8];
+        fn next(&mut self) -> Option<&'a [u8]> {
+            let position = self.position;
+            if position >= self.len {
+                None
+            } else {
+                unsafe {
+                    for ix in position..self.len {
+                        if *self.ptr.add(ix) == b'\n' {
+                            self.position = ix + 1;
+                            return Some(std::slice::from_raw_parts(
+                                self.ptr.add(position),
+                                (ix + 1) - position,
+                            ));
+                        }
+                    }
+                    self.position = self.len;
+                    return Some(std::slice::from_raw_parts(
+                        self.ptr.add(position),
+                        self.len - position,
+                    ));
+                }
+            }
+        }
+    }
+    #[cfg(test)]
+    mod test {
+        use super::LineSplitter;
+        fn split_inclusive_equality(s: &str) {
+            assert_eq!(
+                LineSplitter::new(s.as_bytes())
+                    .map(|bs| bs.to_vec())
+                    .collect::<Vec<Vec<u8>>>(),
+                s.split_inclusive("\n")
+                    .map(|s| s.as_bytes().to_vec())
+                    .collect::<Vec<Vec<u8>>>(),
+                "split inclusive equality for {s:?}"
+            )
+        }
+        #[test]
+        fn empty_string() {
+            split_inclusive_equality("")
+        }
+        #[test]
+        fn something_string() {
+            split_inclusive_equality("foobar")
+        }
+        #[test]
+        fn prefix_newline() {
+            split_inclusive_equality("\nfoobar")
+        }
+        #[test]
+        fn surrounding_newline() {
+            split_inclusive_equality("\nfoobar\n")
+        }
+        #[test]
+        fn trailing_newline() {
+            split_inclusive_equality("foobar\n")
+        }
+        #[test]
+        fn stuff_on_second_line() {
+            split_inclusive_equality("foobar\nbaz")
+        }
+        #[test]
+        fn couple_of_lines() {
+            split_inclusive_equality("gussie\nwilla\nsparky\n")
+        }
+    }
+}
+
+#[cfg(test)]
+mod test_console_buffer {
+    use super::{BumpArena, ConsoleBuffer};
+
+    #[test]
+    fn empty_line() {
+        let arena = BumpArena::new();
+        let mut console_buffer = ConsoleBuffer::new(&arena, 64);
+
+        let mut written = Vec::new();
+
+        let r: &mut Vec<Vec<u8>> = &mut written;
+        console_buffer.write_as_lines(b"\n", move |line| r.push(line.to_vec()));
+
+        assert_eq!(written, vec![b""]);
+    }
+
+    #[test]
+    fn two_lines() {
+        let arena = BumpArena::new();
+        let mut console_buffer = ConsoleBuffer::new(&arena, 64);
+
+        let mut written = Vec::new();
+
+        let r: &mut Vec<Vec<u8>> = &mut written;
+        console_buffer.write_as_lines(b"foo\nbar\n", move |line| r.push(line.to_vec()));
+
+        assert_eq!(written, vec![b"foo", b"bar"]);
+    }
+
+    #[test]
+    fn one_line_two_chunks() {
+        let arena = BumpArena::new();
+        let mut console_buffer = ConsoleBuffer::new(&arena, 64);
+
+        let mut written = Vec::new();
+
+        let r: &mut Vec<Vec<u8>> = &mut written;
+        console_buffer.write_as_lines(b"foo", move |line| r.push(line.to_vec()));
+        let r: &mut Vec<Vec<u8>> = &mut written;
+        console_buffer.write_as_lines(b"bar\n", move |line| r.push(line.to_vec()));
+
+        assert_eq!(written, vec![b"foobar"]);
+    }
+
+    #[test]
+    fn two_lines_two_chunks() {
+        let arena = BumpArena::new();
+        let mut console_buffer = ConsoleBuffer::new(&arena, 64);
+
+        let mut written = Vec::new();
+
+        let r: &mut Vec<Vec<u8>> = &mut written;
+        console_buffer.write_as_lines(b"foo", move |line| r.push(line.to_vec()));
+        let r: &mut Vec<Vec<u8>> = &mut written;
+        console_buffer.write_as_lines(b"bar\nbaz\n", move |line| r.push(line.to_vec()));
+
+        assert_eq!(written, vec![b"foobar".as_slice(), b"baz".as_slice()]);
+    }
+
+    #[test]
+    fn two_lines_three_chunks() {
+        let arena = BumpArena::new();
+        let mut console_buffer = ConsoleBuffer::new(&arena, 64);
+
+        let mut written = Vec::new();
+
+        let r: &mut Vec<Vec<u8>> = &mut written;
+        console_buffer.write_as_lines(b"foo", move |line| r.push(line.to_vec()));
+        let r: &mut Vec<Vec<u8>> = &mut written;
+        console_buffer.write_as_lines(b"bar\nbaz", move |line| r.push(line.to_vec()));
+        assert_eq!(written, vec![b"foobar".as_slice()]);
+
+        let r: &mut Vec<Vec<u8>> = &mut written;
+        console_buffer.write_as_lines(b"\n", move |line| r.push(line.to_vec()));
+
+        assert_eq!(written, vec![b"foobar".as_slice(), b"baz".as_slice()]);
+    }
+
+    #[test]
+    #[should_panic(expected = "FIXME handle full buffer case")]
+    fn full_buffer_behavior_is_broken() {
+        let arena = BumpArena::new();
+        let mut console_buffer = ConsoleBuffer::new(&arena, 8);
+
+        console_buffer.write_as_lines(b"overfull ", |_| {});
     }
 }
 
@@ -2552,6 +2680,7 @@ const fn bump_arena_size() -> usize {
 // Statically assert that the `State` structure is the size of a wasm page. This
 // mostly guarantees that it's not larger than one page which is relied upon
 // below.
+#[cfg(target_arch = "wasm32")]
 const _: () = {
     let _size_assert: [(); PAGE_SIZE] = [(); size_of::<RefCell<State>>()];
 };

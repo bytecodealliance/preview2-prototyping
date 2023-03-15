@@ -71,7 +71,7 @@ macro_rules! unreachable {
         eprint!("unreachable executed at adapter line ");
         crate::macros::eprint_u32(line!());
         eprint!("\n");
-        wasm32::unreachable()
+        core::arch::wasm32::unreachable()
     }};
 
     ($arg:tt) => {{
@@ -80,7 +80,7 @@ macro_rules! unreachable {
         eprint!(": ");
         eprintln!($arg);
         eprint!("\n");
-        wasm32::unreachable()
+        core::arch::wasm32::unreachable()
     }};
 }
 
