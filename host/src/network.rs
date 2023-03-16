@@ -3,7 +3,7 @@ use crate::{
     command::wasi::network::{self, Network},
     WasiCtx,
 };
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use cap_std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use wasi_common::WasiNetwork;
 
 pub(crate) fn convert(_error: wasi_common::Error) -> anyhow::Error {
@@ -24,7 +24,7 @@ impl network::Host for WasiCtx {
 #[async_trait::async_trait]
 impl instance_network::Host for WasiCtx {
     async fn instance_network(&mut self) -> anyhow::Result<Network> {
-        let network = (self.network_creator)()?;
+        let network = (self.network_creator)(self.pool.clone())?;
         let table = self.table_mut();
         let network = table.push(Box::new(network)).map_err(convert)?;
         Ok(network)

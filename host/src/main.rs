@@ -53,8 +53,8 @@ async fn run_command(
     let mut store = Store::new(
         engine,
         WasiCtxBuilder::new()
-            .inherit_stdin()
-            .inherit_stdout()
+            .inherit_stdio()
+            .inherit_network()
             .build(),
     );
 

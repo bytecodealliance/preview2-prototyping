@@ -22,6 +22,7 @@ cap-fs-ext = { workspace = true }
 bitflags = { workspace = true }
 async-trait = { workspace = true }
 system-interface = { workspace = true }
+ipnet = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 rustix = { workspace = true, features = ["fs"] }

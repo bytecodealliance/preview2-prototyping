@@ -47,6 +47,8 @@ pub use sched::sched_ctx;
 
 use crate::net::{Network, TcpSocket};
 use cap_rand::{Rng, RngCore, SeedableRng};
+use cap_std::net::{Ipv4Addr, Ipv6Addr, Pool};
+use ipnet::IpNet;
 use wasi_common::{
     network::{AddressFamily, WasiNetwork},
     stream::{InputStream, OutputStream},
@@ -92,6 +94,13 @@ impl WasiCtxBuilder {
     pub fn inherit_stdio(self) -> Self {
         self.inherit_stdin().inherit_stdout().inherit_stderr()
     }
+    pub fn inherit_network(mut self) -> Self {
+        self.0
+            .insert_ip_net_port_any(IpNet::new(Ipv4Addr::UNSPECIFIED.into(), 0).unwrap());
+        self.0
+            .insert_ip_net_port_any(IpNet::new(Ipv6Addr::UNSPECIFIED.into(), 0).unwrap());
+        self
+    }
     pub fn preopened_dir(mut self, fd: u32, dir: Dir) -> Self {
         let dir = Box::new(crate::dir::Dir::from_cap_std(dir));
         self.0.insert_dir(fd, dir);
@@ -109,8 +118,8 @@ impl WasiCtxBuilder {
     }
 }
 
-fn create_network() -> Result<Box<dyn WasiNetwork>, Error> {
-    let network: Box<dyn WasiNetwork> = Box::new(Network::new());
+fn create_network(pool: Pool) -> Result<Box<dyn WasiNetwork>, Error> {
+    let network: Box<dyn WasiNetwork> = Box::new(Network::new(pool));
     Ok(network)
 }
 

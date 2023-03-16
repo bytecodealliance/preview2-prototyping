@@ -36,11 +36,7 @@ pub struct TcpSocket(Arc<Mutex<TcpSocketImpl>>);
 pub struct UdpSocket(Arc<OwnedFd>);
 
 impl Network {
-    pub fn new() -> Self {
-        let pool = Pool::new();
-
-        // FIXME: Populate the pool.
-
+    pub fn new(pool: Pool) -> Self {
         Self(pool)
     }
 }
