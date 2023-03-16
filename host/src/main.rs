@@ -26,14 +26,7 @@ async fn main() -> Result<()> {
     let mut linker = Linker::new(&engine);
     add_to_linker(&mut linker, |x| x)?;
 
-    let mut store = Store::new(
-        &engine,
-        WasiCtxBuilder::new()
-            .inherit_stdin()
-            .inherit_stdout()
-            .inherit_stderr()
-            .build(),
-    );
+    let mut store = Store::new(&engine, WasiCtxBuilder::new().inherit_stdio().build());
 
     let (wasi, _instance) = Command::instantiate_async(&mut store, &component, &linker).await?;
 
