@@ -444,6 +444,7 @@ impl AsFd for TcpSocket {
         let sock = self.0.lock().unwrap();
         let raw_fd = match &*sock {
             TcpSocketImpl::Sock(sock) => sock.as_fd().as_raw_fd(),
+            TcpSocketImpl::Listening(listener) => listener.as_fd().as_raw_fd(),
             _ => panic!(),
         };
         // SAFETY: Once we switch to `TcpSocketImpl::Sock`, we never
