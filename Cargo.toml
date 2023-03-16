@@ -15,9 +15,9 @@ edition = "2021"
 anyhow = "1.0.22"
 thiserror = "1.0.15"
 tracing = "0.1.26"
-cap-std = "1.0.5"
-cap-rand = "1.0.5"
-cap-fs-ext = "1.0.5"
+cap-std = "1.0.6"
+cap-rand = "1.0.6"
+cap-fs-ext = "1.0.6"
 bitflags = "1.2"
 windows-sys = "0.45.0"
 rustix = "0.36.0"
@@ -34,8 +34,8 @@ wit-bindgen = { workspace = true, features = ["macros"] }
 byte-array = { path = "byte-array" }
 
 [build-dependencies]
-wasm-encoder = "0.24"
-object = { version = "0.29.0", default-features = false, features = ["archive"] }
+wasm-encoder = "0.25"
+object = { version = "0.30.0", default-features = false, features = ["archive"] }
 
 [lib]
 crate-type = ["cdylib"]
