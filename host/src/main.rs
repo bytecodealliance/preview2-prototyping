@@ -31,6 +31,7 @@ async fn main() -> Result<()> {
         WasiCtxBuilder::new()
             .inherit_stdin()
             .inherit_stdout()
+            .inherit_stderr()
             .build(),
     );
 
