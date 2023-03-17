@@ -17,7 +17,11 @@ impl wasi::types::Host for WasiCtx {
     async fn new_fields(&mut self, _entries: Vec<(String, String)>) -> wasmtime::Result<Fields> {
         anyhow::bail!("not implemented")
     }
-    async fn fields_get(&mut self, _fields: Fields, _name: String) -> wasmtime::Result<Vec<String>> {
+    async fn fields_get(
+        &mut self,
+        _fields: Fields,
+        _name: String,
+    ) -> wasmtime::Result<Vec<String>> {
         anyhow::bail!("not implemented")
     }
     async fn fields_set(
@@ -123,7 +127,10 @@ impl wasi::types::Host for WasiCtx {
     ) -> wasmtime::Result<Result<OutgoingStream, ()>> {
         anyhow::bail!("not implemented")
     }
-    async fn drop_response_outparam(&mut self, _response: ResponseOutparam) -> wasmtime::Result<()> {
+    async fn drop_response_outparam(
+        &mut self,
+        _response: ResponseOutparam,
+    ) -> wasmtime::Result<()> {
         anyhow::bail!("not implemented")
     }
     async fn set_response_outparam(
@@ -132,10 +139,16 @@ impl wasi::types::Host for WasiCtx {
     ) -> wasmtime::Result<Result<(), ()>> {
         anyhow::bail!("not implemented")
     }
-    async fn drop_incoming_response(&mut self, _response: IncomingResponse) -> wasmtime::Result<()> {
+    async fn drop_incoming_response(
+        &mut self,
+        _response: IncomingResponse,
+    ) -> wasmtime::Result<()> {
         anyhow::bail!("not implemented")
     }
-    async fn drop_outgoing_response(&mut self, _response: OutgoingResponse) -> wasmtime::Result<()> {
+    async fn drop_outgoing_response(
+        &mut self,
+        _response: OutgoingResponse,
+    ) -> wasmtime::Result<()> {
         anyhow::bail!("not implemented")
     }
     async fn incoming_response_status(
