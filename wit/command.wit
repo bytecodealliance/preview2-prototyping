@@ -15,8 +15,6 @@ default world command {
   import random: random.random
   import poll: poll.poll
   import streams: io.streams
-  import default-outgoing-HTTP: http.outgoing-handler
-  import HTTP: http.incoming-handler
   import environment: pkg.environment
   import environment-preopens: pkg.environment-preopens
   import exit: pkg.exit

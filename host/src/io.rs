@@ -1,7 +1,7 @@
 use crate::{
+    command::wasi::poll::Pollable,
+    command::wasi::streams::{self, InputStream, OutputStream, StreamError},
     poll::PollableEntry,
-    wasi::poll::Pollable,
-    wasi::streams::{self, InputStream, OutputStream, StreamError},
     HostResult, WasiCtx,
 };
 use wasi_common::stream::TableStreamExt;

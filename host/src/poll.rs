@@ -1,7 +1,7 @@
 use crate::{
-    wasi::monotonic_clock::{Instant, MonotonicClock},
-    wasi::poll::{self, Pollable},
-    wasi::streams::{InputStream, OutputStream, StreamError},
+    command::wasi::monotonic_clock::{Instant, MonotonicClock},
+    command::wasi::poll::{self, Pollable},
+    command::wasi::streams::{InputStream, OutputStream, StreamError},
     WasiCtx,
 };
 use wasi_common::clocks::TableMonotonicClockExt;
