@@ -45,6 +45,9 @@ fn main() -> Result<()> {
                                 && i.module != "environment-preopens"
                                 && i.module != "exit"
                                 && i.module != "stderr"
+                                && i.module != "types"
+                                && i.module != "incoming-handler"
+                                && i.module != "outgoing-handler"
                                 && i.module != "canonical_abi"
                                 && i.module != "__main_module__"
                             {
