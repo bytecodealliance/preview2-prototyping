@@ -17,6 +17,11 @@ async fn insecure_random(_ctx: &mut WasiCtx) -> anyhow::Result<(u64, u64)> {
     Ok((0, 0))
 }
 
+// Implementatations of the traits for both the command and proxy worlds.
+// The bodies have been pulled out into functions above to allow them to
+// be shared between the two. Ideally, we should add features to the
+// bindings to facilitate this kind of sharing.
+
 #[async_trait::async_trait]
 impl command::wasi::random::Host for WasiCtx {
     async fn get_random_bytes(&mut self, len: u64) -> anyhow::Result<Vec<u8>> {

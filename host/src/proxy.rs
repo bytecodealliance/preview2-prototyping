@@ -16,6 +16,8 @@ pub fn add_to_linker<T: Send>(
     wasi::random::add_to_linker(l, f)?;
     wasi::console::add_to_linker(l, f)?;
     wasi::types::add_to_linker(l, f)?;
+    wasi::poll::add_to_linker(l, f)?;
+    wasi::streams::add_to_linker(l, f)?;
     wasi::default_outgoing_http::add_to_linker(l, f)?;
     Ok(())
 }
