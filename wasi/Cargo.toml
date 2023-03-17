@@ -6,7 +6,7 @@ edition.workspace = true
 publish = false
 
 [dependencies]
-wit-bindgen = { workspace = true, default-features = true }
+wit-bindgen = { workspace = true, features = ["macros", "realloc"] }
 
 [lib]
 crate-type = ["lib"]
