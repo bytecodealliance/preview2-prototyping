@@ -109,6 +109,13 @@ jobs:
       with:
         name: dummy_proxy.component.wasm
         path: dummy_proxy.component.wasm
+    - run: |
+      wasm-tools component embed --dummy ./wit/ -w reactor -o ./dummy_reactor.component.wasm
+      wasm-tools print ./dummy_reactor.component.wasm
+    - uses: actions/upload-artifact@v3
+      with:
+        name: dummy_reactor.component.wasm
+        path: dummy_reactor.component.wasm
 
     - run: |
         curl -L https://github.com/bytecodealliance/wit-bindgen/releases/download/wit-bindgen-cli-0.4.0/wit-bindgen-v0.4.0-x86_64-linux.tar.gz | tar xfz -
@@ -148,3 +155,4 @@ jobs:
           cli.rs
           dummy_command.component.wasm
           dummy_proxy.component.wasm
+          dummy_reactor.component.wasm
