@@ -14,13 +14,9 @@ tracing = { workspace = true }
 wasmtime = { git = "https://github.com/bytecodealliance/wasmtime", rev = "8d3a881b524d56498dfc71b65818b2abbeb1da44", features = ["component-model"] }
 wasi-common = { path = "../wasi-common" }
 wasi-cap-std-sync = { path = "../wasi-common/cap-std-sync" }
-reqwest = { version = "0.11.14", optional = true }
 
 [dev-dependencies]
 test-programs-macros = { path = "../test-programs/macros" }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt" ]}
 test-log = { version = "0.2", default-features = false, features = ["trace"] }
 tempfile = "3.3.0"
-
-[features]
-http = ["dep:reqwest"]
