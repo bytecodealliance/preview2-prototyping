@@ -11,6 +11,8 @@ use std::convert::TryInto;
 use std::io::{self, Read, Write};
 #[cfg(unix)]
 use std::os::fd::AsRawFd;
+#[cfg(windows)]
+use std::os::windows::io::AsRawSocket;
 use std::sync::Arc;
 use std::sync::Mutex;
 use system_interface::io::{IoExt, IsReadWrite, ReadReady};
@@ -71,7 +73,7 @@ impl WasiTcpSocket for TcpSocket {
         self
     }
 
-    fn pollable(&self) -> rustix::fd::BorrowedFd<'_> {
+    fn pollable(&self) -> BorrowedFd<'_> {
         self.as_fd()
     }
 
@@ -313,7 +315,7 @@ impl InputStream for TcpSocket {
         self
     }
     #[cfg(unix)]
-    fn pollable_read(&self) -> Option<rustix::fd::BorrowedFd> {
+    fn pollable_read(&self) -> Option<BorrowedFd> {
         Some(self.as_fd())
     }
 
@@ -375,7 +377,7 @@ impl OutputStream for TcpSocket {
     }
 
     #[cfg(unix)]
-    fn pollable_write(&self) -> Option<rustix::fd::BorrowedFd> {
+    fn pollable_write(&self) -> Option<BorrowedFd> {
         Some(self.as_fd())
     }
 
@@ -465,11 +467,14 @@ impl AsSocket for TcpSocket {
     /// Borrows the socket.
     fn as_socket(&self) -> BorrowedSocket<'_> {
         let sock = self.0.lock().unwrap();
-        let sock = match *sock {
-            TcpSocketImpl::Init(_) => return Err(Error::invalid_argument()),
-            TcpSocketImpl::Sock(sock) => sock,
+        let raw_fd = match &*sock {
+            TcpSocketImpl::Sock(sock) => sock.as_socket().as_raw_socket(),
+            TcpSocketImpl::Listening(listener) => listener.as_socket().as_raw_socket(),
+            _ => panic!(),
         };
-        sock.as_socket()
+        // SAFETY: Once we switch to `TcpSocketImpl::Sock`, we never
+        // switch back to `Init` or switch the file descriptor out.
+        unsafe { BorrowedFd::borrow_raw(raw_fd) }
     }
 }
 
@@ -477,7 +482,7 @@ impl AsSocket for TcpSocket {
 impl AsHandleOrSocket for TcpSocket {
     #[inline]
     fn as_handle_or_socket(&self) -> BorrowedHandleOrSocket {
-        BorrowedHandleOrSocket::from_socket(self.0.as_socket())
+        BorrowedHandleOrSocket::from_socket(self.as_socket())
     }
 }
 #[cfg(windows)]
