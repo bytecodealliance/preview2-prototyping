@@ -96,22 +96,25 @@ jobs:
         curl -L https://github.com/bytecodealliance/wasm-tools/releases/download/wasm-tools-1.0.27/wasm-tools-1.0.27-x86_64-linux.tar.gz | tar xfz -
         echo `pwd`/wasm-tools-1.0.27-x86_64-linux >> $GITHUB_PATH
     - run: |
-      wasm-tools component embed --dummy ./wit/ -w command -o ./dummy_command.component.wasm
-      wasm-tools print ./dummy_command.component.wasm
+        wasm-tools component embed --dummy ./wit/ -w command -o ./dummy_command.wasm
+        wasm-tools component new -o ./dummy_command.component.wasm ./dummy_command.wasm
+        wasm-tools print ./dummy_command.component.wasm
     - uses: actions/upload-artifact@v3
       with:
         name: dummy_command.component.wasm
         path: dummy_command.component.wasm
     - run: |
-      wasm-tools component embed --dummy ./wit/ -w proxy -o ./dummy_proxy.component.wasm
-      wasm-tools print ./dummy_proxy.component.wasm
+        wasm-tools component embed --dummy ./wit/ -w proxy -o ./dummy_proxy.wasm
+        wasm-tools component new -o ./dummy_proxy.component.wasm ./dummy_proxy.wasm
+        wasm-tools print ./dummy_proxy.component.wasm
     - uses: actions/upload-artifact@v3
       with:
         name: dummy_proxy.component.wasm
         path: dummy_proxy.component.wasm
     - run: |
-      wasm-tools component embed --dummy ./wit/ -w reactor -o ./dummy_reactor.component.wasm
-      wasm-tools print ./dummy_reactor.component.wasm
+        wasm-tools component embed --dummy ./wit/ -w reactor -o ./dummy_reactor.wasm
+        wasm-tools component new -o ./dummy_reactor.component.wasm ./dummy_reactor.wasm
+        wasm-tools print ./dummy_reactor.component.wasm
     - uses: actions/upload-artifact@v3
       with:
         name: dummy_reactor.component.wasm
