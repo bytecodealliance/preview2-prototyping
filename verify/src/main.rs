@@ -42,7 +42,7 @@ fn main() -> Result<()> {
                                 && i.module != "poll"
                                 && i.module != "streams"
                                 && i.module != "environment"
-                                && i.module != "environment-preopens"
+                                && i.module != "preopens"
                                 && i.module != "exit"
                                 && i.module != "stderr"
                                 && i.module != "types"
