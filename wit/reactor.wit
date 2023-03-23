@@ -15,6 +15,7 @@ default world reactor {
   import random: random.random
   import poll: poll.poll
   import streams: io.streams
+  import default-outgoing-HTTP: http.outgoing-handler
   import environment: pkg.environment
   import environment-preopens: pkg.environment-preopens
   import exit: pkg.exit
