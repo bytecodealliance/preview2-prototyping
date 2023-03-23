@@ -16,18 +16,10 @@ default world command {
   import poll: poll.poll
   import streams: io.streams
   import environment: pkg.environment
-  import environment-preopens: pkg.environment-preopens
+  import preopens: pkg.preopens
   import exit: pkg.exit
-  import stderr: pkg.stderr
-
-  use io.streams.{input-stream, output-stream}
-  use filesystem.filesystem.{descriptor}
 
   export main: func(
-    stdin: input-stream,
-    stdout: output-stream,
-    stderr: output-stream,
     args: list<string>,
-    preopens: list<tuple<descriptor, string>>,
   ) -> result
 }

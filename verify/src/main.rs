@@ -42,7 +42,7 @@ fn main() -> Result<()> {
                                 && i.module != "poll"
                                 && i.module != "streams"
                                 && i.module != "environment"
-                                && i.module != "environment-preopens"
+                                && i.module != "preopens"
                                 && i.module != "exit"
                                 && i.module != "stderr"
                                 && i.module != "types"
@@ -83,7 +83,7 @@ fn main() -> Result<()> {
             | Payload::StartSection { .. }
             | Payload::TagSection(_)
             | Payload::UnknownSection { .. } => {
-                bail!("unsupported section found in preview1.wasm")
+                bail!("unsupported section {payload:?} found in preview1.wasm")
             }
 
             // component-model related things that shouldn't show up

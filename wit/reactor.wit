@@ -16,7 +16,6 @@ default world reactor {
   import poll: poll.poll
   import streams: io.streams
   import environment: pkg.environment
-  import environment-preopens: pkg.environment-preopens
+  import preopens: pkg.preopens
   import exit: pkg.exit
-  import stderr: pkg.stderr
 }
