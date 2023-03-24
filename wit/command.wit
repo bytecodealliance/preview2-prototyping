@@ -19,7 +19,5 @@ default world command {
   import preopens: pkg.preopens
   import exit: pkg.exit
 
-  export main: func(
-    args: list<string>,
-  ) -> result
+  export main: func() -> result
 }
