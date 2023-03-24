@@ -19,5 +19,5 @@ default world command {
   import preopens: pkg.preopens
   import exit: pkg.exit
 
-  export main: func() -> result
+  export run: func() -> result
 }
