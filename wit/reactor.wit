@@ -17,7 +17,6 @@ default world reactor {
   import streams: io.streams
   import default-outgoing-HTTP: http.outgoing-handler
   import environment: pkg.environment
-  import environment-preopens: pkg.environment-preopens
+  import preopens: pkg.preopens
   import exit: pkg.exit
-  import stderr: pkg.stderr
 }
