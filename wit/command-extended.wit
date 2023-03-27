@@ -1,4 +1,4 @@
-default world reactor {
+default world command-extended {
   import wall-clock: clocks.wall-clock
   import monotonic-clock: clocks.monotonic-clock
   import instance-wall-clock: clocks.instance-wall-clock
@@ -15,9 +15,17 @@ default world reactor {
   import random: random.random
   import poll: poll.poll
   import streams: io.streams
-  import console: logging.handler
-  import default-outgoing-HTTP: http.outgoing-handler
   import environment: pkg.environment
   import preopens: pkg.preopens
   import exit: pkg.exit
+
+  // We should replace all others with `include self.command`
+  // as soon as the unioning of worlds is available:
+  // https://github.com/WebAssembly/component-model/issues/169
+  import console: logging.handler
+  import default-outgoing-HTTP: http.outgoing-handler
+
+  export main: func(
+    args: list<string>,
+  ) -> result
 }
