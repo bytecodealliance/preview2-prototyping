@@ -76,9 +76,13 @@ jobs:
     - run: rustup update stable && rustup default stable
     - run: rustup target add wasm32-wasi wasm32-unknown-unknown
 
+    - run: |
+        curl -L https://github.com/bytecodealliance/wasm-tools/releases/download/wasm-tools-1.0.27/wasm-tools-1.0.27-x86_64-linux.tar.gz | tar xfz -
+        echo `pwd`/wasm-tools-1.0.27-x86_64-linux >> $GITHUB_PATH
+
     # Release build, command
     - run: cargo build --target wasm32-unknown-unknown --release --no-default-features --features command
-    - run: mv target/wasm32-unknown-unknown/release/wasi_snapshot_preview1.wasm wasi_snapshot_preview1.command.wasm
+    - run: wasm-tools metadata add --name "wasi_snapshot_preview1.command.adapter:${GITHUB_SHA}" target/wasm32-unknown-unknown/release/wasi_snapshot_preview1.wasm -o wasi_snapshot_preview1.command.wasm
     - uses: actions/upload-artifact@v3
       with:
         name: wasi_snapshot_preview1.command.wasm
@@ -86,15 +90,12 @@ jobs:
 
     # Release build, default features (reactor)
     - run: cargo build --target wasm32-unknown-unknown --release
-    - run: mv target/wasm32-unknown-unknown/release/wasi_snapshot_preview1.wasm wasi_snapshot_preview1.reactor.wasm
+    - run: wasm-tools metadata add --name "wasi_snapshot_preview1.reactor.adapter:${GITHUB_SHA}" target/wasm32-unknown-unknown/release/wasi_snapshot_preview1.wasm -o wasi_snapshot_preview1.reactor.wasm
     - uses: actions/upload-artifact@v3
       with:
         name: wasi_snapshot_preview1.reactor.wasm
         path: target/wasm32-unknown-unknown/release/wasi_snapshot_preview1.reactor.wasm
 
-    - run: |
-        curl -L https://github.com/bytecodealliance/wasm-tools/releases/download/wasm-tools-1.0.27/wasm-tools-1.0.27-x86_64-linux.tar.gz | tar xfz -
-        echo `pwd`/wasm-tools-1.0.27-x86_64-linux >> $GITHUB_PATH
     - run: |
         wasm-tools component embed --dummy ./wit/ -w command -o ./dummy_command.wasm
         wasm-tools component new -o ./dummy_command.component.wasm ./dummy_command.wasm
