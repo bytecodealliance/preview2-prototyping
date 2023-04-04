@@ -9,7 +9,40 @@ pub mod wasi {
         trappable_error_type: {
             "filesystem"::"error-code": Error,
             "streams"::"stream-error": Error,
-        }
+        },
+        only_interfaces: true,
+    });
+
+    wasmtime::component::bindgen!({
+        path: "../wit",
+        world: "command",
+        tracing: true,
+        async: true,
+        trappable_error_type: {
+            "filesystem"::"error-code": Error,
+            "streams"::"stream-error": Error,
+        },
+        with: {
+            "filesystem": filesystem,
+            "instance_monotonic_clock": instance_monotonic_clock,
+            "instance_network": instance_network,
+            "instance_wall_clock": instance_wall_clock,
+            "ip_name_lookup": ip_name_lookup,
+            "monotonic_clock": monotonic_clock,
+            "network": network,
+            "poll": poll,
+            "streams": streams,
+            "tcp": tcp,
+            "tcp_create_socket": tcp_create_socket,
+            "timezone": timezone,
+            "udp": udp,
+            "udp_create_socket": udp_create_socket,
+            "wall_clock": wall_clock,
+            "random": random,
+            "environment": environment,
+            "exit": exit,
+            "preopens": preopens,
+        },
     });
 }
 

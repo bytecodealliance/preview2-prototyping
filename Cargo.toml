@@ -69,3 +69,7 @@ default = ["reactor"]
 reactor = []
 command = []
 
+[patch.crates-io]
+wasmtime = { path = "../wasmtime/crates/wasmtime" }
+wasmtime-component-macro = { path = "../wasmtime/crates/component-macro" }
+wasmtime-wit-bindgen = { path = "../wasmtime/crates/wit-bindgen" }
