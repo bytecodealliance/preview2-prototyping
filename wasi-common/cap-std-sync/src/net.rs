@@ -171,7 +171,7 @@ impl WasiTcpSocket for TcpSocket {
     }
 
     async fn readable(&self) -> Result<(), Error> {
-        if is_read_write(&self.0)?.0 {
+        if is_read_write(&*self.0)?.0 {
             Ok(())
         } else {
             Err(Error::badf())
@@ -179,7 +179,7 @@ impl WasiTcpSocket for TcpSocket {
     }
 
     async fn writable(&self) -> Result<(), Error> {
-        if is_read_write(&self.0)?.1 {
+        if is_read_write(&*self.0)?.1 {
             Ok(())
         } else {
             Err(Error::badf())
