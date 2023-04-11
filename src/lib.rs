@@ -1547,6 +1547,10 @@ pub unsafe extern "C" fn poll_oneoff(
     }
 
     State::with(|state| {
+        const EVENTTYPE_CLOCK: u8 = wasi::EVENTTYPE_CLOCK.raw();
+        const EVENTTYPE_FD_READ: u8 = wasi::EVENTTYPE_FD_READ.raw();
+        const EVENTTYPE_FD_WRITE: u8 = wasi::EVENTTYPE_FD_WRITE.raw();
+
         let mut pollables = Pollables {
             pointer: pollables,
             index: 0,
@@ -1554,9 +1558,6 @@ pub unsafe extern "C" fn poll_oneoff(
         };
 
         for subscription in subscriptions {
-            const EVENTTYPE_CLOCK: u8 = wasi::EVENTTYPE_CLOCK.raw();
-            const EVENTTYPE_FD_READ: u8 = wasi::EVENTTYPE_FD_READ.raw();
-            const EVENTTYPE_FD_WRITE: u8 = wasi::EVENTTYPE_FD_WRITE.raw();
             pollables.push(match subscription.u.tag {
                 EVENTTYPE_CLOCK => {
                     let clock = &subscription.u.u.clock;
@@ -1660,15 +1661,15 @@ pub unsafe extern "C" fn poll_oneoff(
             let flags;
 
             match subscription.u.tag {
-                0 => {
+                EVENTTYPE_CLOCK => {
                     error = ERRNO_SUCCESS;
-                    type_ = EVENTTYPE_CLOCK;
+                    type_ = wasi::EVENTTYPE_CLOCK;
                     nbytes = 0;
                     flags = 0;
                 }
 
-                1 => {
-                    type_ = EVENTTYPE_FD_READ;
+                EVENTTYPE_FD_READ => {
+                    type_ = wasi::EVENTTYPE_FD_READ;
                     let ds = state.descriptors();
                     let desc = ds
                         .get(subscription.u.u.fd_read.file_descriptor)
@@ -1721,8 +1722,8 @@ pub unsafe extern "C" fn poll_oneoff(
                         _ => unreachable!(),
                     }
                 }
-                2 => {
-                    type_ = EVENTTYPE_FD_WRITE;
+                EVENTTYPE_FD_WRITE => {
+                    type_ = wasi::EVENTTYPE_FD_WRITE;
                     let ds = state.descriptors();
                     let desc = ds
                         .get(subscription.u.u.fd_read.file_descriptor)
@@ -2014,8 +2015,6 @@ const PAGE_SIZE: usize = 65536;
 /// polyfill.
 const PATH_MAX: usize = 4096;
 
-const MAX_DESCRIPTORS: usize = 128;
-
 /// Maximum number of bytes to cache for a `wasi::Dirent` plus its path name.
 const DIRENT_CACHE: usize = 256;
 
@@ -2117,11 +2116,11 @@ const fn bump_arena_size() -> usize {
     // Remove the big chunks of the struct, the `path_buf` and `descriptors`
     // fields.
     start -= PATH_MAX;
-    start -= size_of::<Descriptor>() * MAX_DESCRIPTORS;
+    start -= size_of::<Descriptors>();
     start -= size_of::<DirentCache>();
 
     // Remove miscellaneous metadata also stored in state.
-    start -= 22 * size_of::<usize>();
+    start -= 16 * size_of::<usize>();
 
     // Everything else is the `command_data` allocation.
     start
