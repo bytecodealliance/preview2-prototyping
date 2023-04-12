@@ -47,6 +47,14 @@ jobs:
     - run: rustup target add --toolchain=stable wasm32-wasi wasm32-unknown-unknown
     - run: rustup target add --toolchain=nightly-2023-03-14 wasm32-wasi wasm32-unknown-unknown
 
+    - name: ensure `./wasi/wit/deps` are in sync
+      run: |
+        cargo install wit-deps-cli
+        cd wasi
+        wit-deps lock
+        git add -N wit/deps
+        git diff --exit-code
+
       # Debug build, default features (reactor)
     - run: cargo build --target wasm32-unknown-unknown
     - run: cargo run -p verify -- ./target/wasm32-unknown-unknown/debug/wasi_snapshot_preview1.wasm
