@@ -13,9 +13,9 @@ default world command-extended {
   import random: random.random
   import poll: poll.poll
   import streams: io.streams
-  import environment: pkg.environment
-  import preopens: pkg.preopens
-  import exit: pkg.exit
+  import environment: wasi-base.environment
+  import preopens: wasi-base.preopens
+  import exit: wasi-base.exit
 
   // We should replace all others with `include self.command`
   // as soon as the unioning of worlds is available:

@@ -13,13 +13,9 @@ default world command {
   import random: random.random
   import poll: poll.poll
   import streams: io.streams
-  import environment: pkg.environment
-  import preopens: pkg.preopens
-  import exit: pkg.exit
-
-  // TEMPORARY: need to teach only_interfaces about unions of worlds
-  import console: logging.handler
-  import default-outgoing-HTTP: http.outgoing-handler
+  import environment: wasi-base.environment
+  import preopens: wasi-base.preopens
+  import exit: wasi-base.exit
 
   export main: func() -> result
 }
