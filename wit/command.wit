@@ -17,5 +17,9 @@ default world command {
   import preopens: pkg.preopens
   import exit: pkg.exit
 
+  // TEMPORARY: need to teach only_interfaces about unions of worlds
+  import console: logging.handler
+  import default-outgoing-HTTP: http.outgoing-handler
+
   export main: func() -> result
 }
