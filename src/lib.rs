@@ -405,7 +405,11 @@ pub unsafe extern "C" fn fd_advise(
 /// Note: This is similar to `posix_fallocate` in POSIX.
 #[no_mangle]
 pub unsafe extern "C" fn fd_allocate(fd: Fd, offset: Filesize, len: Filesize) -> Errno {
-    unreachable!("fd_allocate")
+    State::with(|state| {
+        let ds = state.descriptors();
+        let file = ds.get_file(fd)?;
+        unreachable!("fd_allocate is unimplemented")
+    })
 }
 
 /// Close a file descriptor.
@@ -558,7 +562,6 @@ pub unsafe extern "C" fn fd_fdstat_set_rights(
 pub unsafe extern "C" fn fd_filestat_get(fd: Fd, buf: *mut Filestat) -> Errno {
     State::with(|state| {
         let ds = state.descriptors();
-
         match ds.get(fd)? {
             Descriptor::Streams(Streams {
                 type_: StreamType::File(file),
@@ -1087,6 +1090,12 @@ pub unsafe extern "C" fn fd_seek(
 
         // Seeking only works on files.
         if let StreamType::File(file) = &stream.type_ {
+            match file.descriptor_type {
+                // This isn't really the "right" errno, but it is consistient with wasmtime's
+                // preview 1 tests.
+                filesystem::DescriptorType::Directory => return Err(ERRNO_BADF),
+                _ => {}
+            }
             // It's ok to cast these indices; the WASI API will fail if
             // the resulting values are out of range.
             let from = match whence {
@@ -1339,11 +1348,13 @@ pub unsafe extern "C" fn path_open(
         let mut ds = state.descriptors_mut();
         let file = ds.get_dir(fd)?;
         let result = filesystem::open_at(file.fd, at_flags, path, o_flags, flags, mode)?;
+        let descriptor_type = filesystem::get_type(result)?;
         let desc = Descriptor::Streams(Streams {
             input: Cell::new(None),
             output: Cell::new(None),
             type_: StreamType::File(File {
                 fd: result,
+                descriptor_type,
                 position: Cell::new(0),
                 append,
             }),
@@ -2026,6 +2037,9 @@ impl From<filesystem::DescriptorType> for wasi::Filetype {
 pub struct File {
     /// The handle to the preview2 descriptor that this file is referencing.
     fd: filesystem::Descriptor,
+
+    /// The descriptor type, as supplied by filesystem::get_type at opening
+    descriptor_type: filesystem::DescriptorType,
 
     /// The current-position pointer.
     position: Cell<filesystem::Filesize>,
