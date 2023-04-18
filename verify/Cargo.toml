@@ -5,5 +5,5 @@ edition = "2021"
 
 [dependencies]
 wasmparser = "0.92.0"
-wat = "1.0.61"
+wat = "1.0.62"
 anyhow = "1"
