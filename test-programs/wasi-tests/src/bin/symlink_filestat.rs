@@ -1,15 +1,13 @@
 use std::{env, process};
-use wasi_tests::{open_scratch_directory, TESTCONFIG};
+use wasi_tests::open_scratch_directory;
 
 unsafe fn test_path_filestat(dir_fd: wasi::Fd) {
-    if TESTCONFIG.support_rights_readback() {
-        let fdstat = wasi::fd_fdstat_get(dir_fd).expect("fd_fdstat_get");
-        assert_ne!(
-            fdstat.fs_rights_base & wasi::RIGHTS_PATH_FILESTAT_GET,
-            0,
-            "the scratch directory should have RIGHT_PATH_FILESTAT_GET as base right",
-        );
-    }
+    let fdstat = wasi::fd_fdstat_get(dir_fd).expect("fd_fdstat_get");
+    assert_ne!(
+        fdstat.fs_rights_base & wasi::RIGHTS_PATH_FILESTAT_GET,
+        0,
+        "the scratch directory should have RIGHT_PATH_FILESTAT_GET as base right",
+    );
 
     // Create a file in the scratch directory.
     let file_fd = wasi::path_open(
