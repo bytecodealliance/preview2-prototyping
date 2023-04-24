@@ -440,12 +440,6 @@ async fn run_path_open_missing(store: Store<WasiCtx>, wasi: Command) -> Result<(
     run_with_temp_dir(store, wasi).await
 }
 
-async fn run_path_open_read_without_rights(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
-    // unreachable in adapter line 557, inside fd_fdstat_set_rights, when test program is trying to
-    // drop the RIGHTS_FD_READ right
-    expect_fail(run_with_temp_dir(store, wasi).await)
-}
-
 async fn run_path_rename(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
     run_with_temp_dir(store, wasi).await
 }
