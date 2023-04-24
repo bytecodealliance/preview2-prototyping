@@ -381,6 +381,15 @@ impl Descriptors {
                     ),
                 ..
             }) => Ok(file),
+            Descriptor::Streams(Streams {
+                type_:
+                    StreamType::File(
+                        file @ File {
+                            descriptor_type: _, ..
+                        },
+                    ),
+                ..
+            }) => Err(wasi::ERRNO_NOTDIR),
             _ => Err(wasi::ERRNO_BADF),
         }
     }
