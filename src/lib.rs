@@ -1359,16 +1359,7 @@ pub unsafe extern "C" fn path_open(
 
     State::with_mut(|state| {
         let mut ds = state.descriptors_mut();
-        // All other cases where a dirfd is expected but a file is in the table
-        // fails with BADF, but this particular error code is expected by a very
-        // early test (https://github.com/CraneStation/wasi-misc-tests/pull/41)
-        // which expected NOTDIR to be the error for all *at-style functions.
-        // We departed from that pattern since then, but the test suite still
-        // expects this one case.
-        let file = ds.get_file_or_dir(fd)?;
-        if !file.is_dir() {
-            Err(wasi::ERRNO_NOTDIR)?;
-        }
+        let file = ds.get_dir(fd)?;
         let result = filesystem::open_at(file.fd, at_flags, path, o_flags, flags, mode)?;
         let descriptor_type = filesystem::get_type(result)?;
         let desc = Descriptor::Streams(Streams {
