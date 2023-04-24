@@ -306,8 +306,6 @@ async fn run_default_clocks(mut store: Store<WasiCtx>, wasi: Command) -> Result<
 async fn run_with_temp_dir(mut store: Store<WasiCtx>, wasi: Command) -> Result<()> {
     let dir = tempfile::tempdir()?;
 
-    store.data_mut().push_env("NO_RIGHTS_READBACK_SUPPORT", "1");
-
     if cfg!(windows) {
         store.data_mut().push_env("ERRNO_MODE_WINDOWS", "1");
         store.data_mut().push_env("NO_FDFLAGS_SYNC_SUPPORT", "1");
