@@ -306,8 +306,6 @@ async fn run_default_clocks(mut store: Store<WasiCtx>, wasi: Command) -> Result<
 async fn run_with_temp_dir(mut store: Store<WasiCtx>, wasi: Command) -> Result<()> {
     let dir = tempfile::tempdir()?;
 
-    store.data_mut().push_env("NO_RIGHTS_READBACK_SUPPORT", "1");
-
     if cfg!(windows) {
         store.data_mut().push_env("ERRNO_MODE_WINDOWS", "1");
         store.data_mut().push_env("NO_FDFLAGS_SYNC_SUPPORT", "1");
@@ -442,12 +440,6 @@ async fn run_path_open_missing(store: Store<WasiCtx>, wasi: Command) -> Result<(
     run_with_temp_dir(store, wasi).await
 }
 
-async fn run_path_open_read_without_rights(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
-    // unreachable in adapter line 557, inside fd_fdstat_set_rights, when test program is trying to
-    // drop the RIGHTS_FD_READ right
-    expect_fail(run_with_temp_dir(store, wasi).await)
-}
-
 async fn run_path_rename(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
     run_with_temp_dir(store, wasi).await
 }
@@ -466,10 +458,11 @@ async fn run_path_symlink_trailing_slashes(store: Store<WasiCtx>, wasi: Command)
 }
 
 async fn run_poll_oneoff_files(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
-    // trapping upwrap in poll_oneoff in adapter.
-    // maybe this is related to the "if fd isnt a stream, request a pollable which completes
-    // immediately so itll immediately fail" behavior, which i think breaks internal invariant...
-    expect_fail(run_with_temp_dir(store, wasi).await)
+    if cfg!(windows) {
+        expect_fail(run_with_temp_dir(store, wasi).await)
+    } else {
+        run_with_temp_dir(store, wasi).await
+    }
 }
 
 async fn run_poll_oneoff_stdio(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
