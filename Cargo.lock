@@ -746,6 +746,7 @@ dependencies = [
  "cap-rand",
  "cap-std",
  "clap",
+ "lazy_static",
  "tempfile",
  "test-log",
  "test-programs-macros",
@@ -1719,7 +1720,7 @@ version = "0.0.0"
 dependencies = [
  "byte-array",
  "object",
- "wasi 0.11.0+wasi-snapshot-preview1",
+ "wasi",
  "wasm-encoder 0.25.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "wit-bindgen",
 ]
