@@ -8,6 +8,7 @@ use crate::tcp_socket::WasiTcpSocket;
 use crate::Error;
 use cap_net_ext::AddressFamily;
 use cap_rand::RngCore;
+use cap_std::ambient_authority;
 use cap_std::net::Pool;
 
 #[derive(Default)]
@@ -173,7 +174,6 @@ pub struct WasiCtx {
 }
 
 impl WasiCtx {
-    /*
     /// Add network addresses to the pool.
     pub fn insert_addr<A: cap_std::net::ToSocketAddrs>(&mut self, addrs: A) -> std::io::Result<()> {
         self.pool.insert(addrs, ambient_authority())
@@ -211,7 +211,6 @@ impl WasiCtx {
     pub fn insert_ip_net(&mut self, ip_net: ipnet::IpNet, port: u16) {
         self.pool.insert_ip_net(ip_net, port, ambient_authority())
     }
-    */
 
     pub fn table(&self) -> &Table {
         &self.table
