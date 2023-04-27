@@ -5,12 +5,11 @@ mod exit;
 mod filesystem;
 mod http_types;
 mod io;
-mod ip_name_lookup;
 mod logging;
-mod poll;
+// Temporarily making poll pub until we can rework WasiSched interface so wasmtime-wasi-sockets
+// doesn't need direct access to these primitives:
+pub mod poll;
 mod random;
 pub use wasi_common::{table::Table, WasiCtx};
-
-type HostResult<T, E> = anyhow::Result<Result<T, E>>;
 
 pub mod wasi;

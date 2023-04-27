@@ -3,26 +3,26 @@
 use crate::{
     wasi::ip_name_lookup::{self, ResolveAddressStream},
     wasi::network::{Error, IpAddress, IpAddressFamily, Network},
-    wasi::poll::Pollable,
-    HostResult, WasiCtx,
+    WasiSocketsView,
 };
+use host::wasi::poll::Pollable;
 
 #[async_trait::async_trait]
-impl ip_name_lookup::Host for WasiCtx {
+impl<T: WasiSocketsView> ip_name_lookup::Host for T {
     async fn resolve_addresses(
         &mut self,
         network: Network,
         name: String,
         address_family: Option<IpAddressFamily>,
         include_unavailable: bool,
-    ) -> HostResult<ResolveAddressStream, Error> {
+    ) -> anyhow::Result<Result<ResolveAddressStream, Error>> {
         todo!()
     }
 
     async fn resolve_next_address(
         &mut self,
         stream: ResolveAddressStream,
-    ) -> HostResult<Option<IpAddress>, Error> {
+    ) -> anyhow::Result<Result<Option<IpAddress>, Error>> {
         todo!()
     }
 
@@ -33,7 +33,10 @@ impl ip_name_lookup::Host for WasiCtx {
         todo!()
     }
 
-    async fn non_blocking(&mut self, stream: ResolveAddressStream) -> HostResult<bool, Error> {
+    async fn non_blocking(
+        &mut self,
+        stream: ResolveAddressStream,
+    ) -> anyhow::Result<Result<bool, Error>> {
         todo!()
     }
 
@@ -41,7 +44,7 @@ impl ip_name_lookup::Host for WasiCtx {
         &mut self,
         stream: ResolveAddressStream,
         value: bool,
-    ) -> HostResult<(), Error> {
+    ) -> anyhow::Result<Result<(), Error>> {
         todo!()
     }
 

@@ -19,7 +19,7 @@ fn convert(error: wasi_common::Error) -> anyhow::Error {
 
 /// A pollable resource table entry.
 #[derive(Copy, Clone)]
-pub(crate) enum PollableEntry {
+pub enum PollableEntry {
     /// Poll for read events.
     Read(InputStream),
     /// Poll for write events.
