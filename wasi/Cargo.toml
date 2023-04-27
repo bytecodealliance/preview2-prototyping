@@ -19,9 +19,5 @@ http = { version = "0.2", optional = true }
 crate-type = ["lib"]
 
 [features]
-default = ["std"]
-std = []
+default = []
 http-client = ["dep:anyhow", "dep:bytes", "dep:http"]
-
-[badges]
-maintenance = { status = "experimental" }

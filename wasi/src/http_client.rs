@@ -1,8 +1,7 @@
 use anyhow::{anyhow, Context};
 use bytes::{BufMut, Bytes, BytesMut};
+use core::ops::Deref;
 use http::header::{HeaderName, HeaderValue};
-#[cfg(feature = "std")]
-use std::ops::Deref;
 
 use crate::snapshots::preview_2::{default_outgoing_http, streams, types as http_types};
 
@@ -33,7 +32,6 @@ impl DefaultClient {
 
 pub struct Request(default_outgoing_http::OutgoingRequest);
 
-#[cfg(feature = "std")]
 impl Deref for Request {
     type Target = default_outgoing_http::OutgoingRequest;
 
@@ -89,7 +87,6 @@ impl TryFrom<http::Request<Bytes>> for Request {
 
 pub struct Method<'a>(http_types::MethodParam<'a>);
 
-#[cfg(feature = "std")]
 impl<'a> Deref for Method<'a> {
     type Target = http_types::MethodParam<'a>;
 
@@ -119,7 +116,6 @@ impl<'a> TryFrom<http::Method> for Method<'a> {
 
 pub struct Response(http_types::IncomingResponse);
 
-#[cfg(feature = "std")]
 impl Deref for Response {
     type Target = http_types::IncomingResponse;
 
@@ -179,7 +175,6 @@ impl TryFrom<Response> for http::Response<Bytes> {
 
 pub struct Headers(http_types::Fields);
 
-#[cfg(feature = "std")]
 impl Deref for Headers {
     type Target = http_types::Fields;
 
