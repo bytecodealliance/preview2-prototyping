@@ -1,24 +1,21 @@
 #![allow(unused_variables)]
 
 use crate::{
-    command::wasi::network::{
+    network::convert,
+    poll::PollableEntry,
+    wasi::network::{
         Error, IpAddressFamily, Ipv4Address, Ipv4SocketAddress, Ipv6Address, Ipv6SocketAddress,
         Network,
     },
-    command::wasi::poll::Pollable,
-    command::wasi::streams::{InputStream, OutputStream},
-    command::wasi::tcp::{self, IpSocketAddress, ShutdownType, TcpSocket},
-    command::wasi::tcp_create_socket,
-    network::convert,
-    poll::PollableEntry,
+    wasi::poll::Pollable,
+    wasi::streams::{InputStream, OutputStream},
+    wasi::tcp::{self, IpSocketAddress, ShutdownType, TcpSocket},
+    wasi::tcp_create_socket,
     HostResult, WasiCtx,
 };
+use cap_net_ext::AddressFamily;
 use cap_std::net::{Ipv4Addr, Ipv6Addr, Shutdown, SocketAddr, SocketAddrV4, SocketAddrV6};
-use wasi_common::{
-    network::{AddressFamily, TableNetworkExt},
-    tcp_socket::TableTcpSocketExt,
-    WasiTcpSocket,
-};
+use wasi_common::{network::TableNetworkExt, tcp_socket::TableTcpSocketExt, WasiTcpSocket};
 
 #[async_trait::async_trait]
 impl tcp::Host for WasiCtx {
@@ -281,8 +278,8 @@ fn convert_ipv6_addr(addr: Ipv6Address) -> Ipv6Addr {
 impl From<IpAddressFamily> for AddressFamily {
     fn from(family: IpAddressFamily) -> Self {
         match family {
-            IpAddressFamily::Ipv4 => AddressFamily::INET,
-            IpAddressFamily::Ipv6 => AddressFamily::INET6,
+            IpAddressFamily::Ipv4 => AddressFamily::Ipv4,
+            IpAddressFamily::Ipv6 => AddressFamily::Ipv6,
         }
     }
 }

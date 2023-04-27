@@ -46,11 +46,12 @@ pub use clocks::clocks_ctx;
 pub use sched::sched_ctx;
 
 use crate::net::{Network, TcpSocket};
+use cap_net_ext::AddressFamily;
 use cap_rand::{Rng, RngCore, SeedableRng};
 use cap_std::net::{Ipv4Addr, Ipv6Addr, Pool};
 use ipnet::IpNet;
 use wasi_common::{
-    network::{AddressFamily, WasiNetwork},
+    network::WasiNetwork,
     stream::{InputStream, OutputStream},
     table::Table,
     tcp_socket::WasiTcpSocket,
@@ -101,10 +102,14 @@ impl WasiCtxBuilder {
             .insert_ip_net_port_any(IpNet::new(Ipv6Addr::UNSPECIFIED.into(), 0).unwrap());
         self
     }
-    pub fn preopened_dir(mut self, fd: u32, dir: Dir) -> Self {
+    pub fn preopened_dir(
+        mut self,
+        dir: cap_std::fs::Dir,
+        guest_path: &str,
+    ) -> Result<Self, anyhow::Error> {
         let dir = Box::new(crate::dir::Dir::from_cap_std(dir));
-        self.0.insert_dir(fd, dir);
-        self
+        self.0.push_preopened_dir(dir, guest_path)?;
+        Ok(self)
     }
     pub fn preopened_listener(mut self, fd: u32, listener: impl Into<TcpSocket>) -> Self {
         let listener: TcpSocket = listener.into();
@@ -128,7 +133,7 @@ fn create_network(pool: Pool) -> Result<Box<dyn WasiNetwork>, Error> {
 }
 
 fn create_tcp_socket(address_family: AddressFamily) -> Result<Box<dyn WasiTcpSocket>, Error> {
-    let socket: Box<dyn WasiTcpSocket> = Box::new(TcpSocket::new(address_family));
+    let socket: Box<dyn WasiTcpSocket> = Box::new(TcpSocket::new(address_family)?);
     Ok(socket)
 }
 

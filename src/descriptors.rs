@@ -58,6 +58,12 @@ impl Streams {
         match &self.input.get() {
             Some(wasi_stream) => Ok(*wasi_stream),
             None => match &self.type_ {
+                // For directories, preview 1 behavior was to return ERRNO_BADF on attempts to read
+                // or write.
+                StreamType::File(File {
+                    descriptor_type: filesystem::DescriptorType::Directory,
+                    ..
+                }) => Err(wasi::ERRNO_BADF),
                 // For files, we may have adjusted the position for seeking, so
                 // create a new stream.
                 StreamType::File(file) => {
@@ -75,6 +81,12 @@ impl Streams {
         match &self.output.get() {
             Some(wasi_stream) => Ok(*wasi_stream),
             None => match &self.type_ {
+                // For directories, preview 1 behavior was to return ERRNO_BADF on attempts to read
+                // or write.
+                StreamType::File(File {
+                    descriptor_type: filesystem::DescriptorType::Directory,
+                    ..
+                }) => Err(wasi::ERRNO_BADF),
                 // For files, we may have adjusted the position for seeking, so
                 // create a new stream.
                 StreamType::File(file) => {
@@ -175,8 +187,11 @@ impl Descriptors {
                 output: Cell::new(None),
                 type_: StreamType::File(File {
                     fd: preopen.descriptor,
+                    descriptor_type: crate::bindings::filesystem::get_type(preopen.descriptor)
+                        .trapping_unwrap(),
                     position: Cell::new(0),
                     append: false,
+                    blocking: false,
                 }),
             }))
             .trapping_unwrap();
@@ -258,6 +273,11 @@ impl Descriptors {
 
     // Internal: close a fd, returning the descriptor.
     fn close_(&mut self, fd: Fd) -> Result<Descriptor, Errno> {
+        // Throw an error if closing an fd which is already closed
+        match self.get_mut(fd)? {
+            Descriptor::Closed(_) => Err(wasi::ERRNO_BADF)?,
+            _ => {}
+        }
         // Mutate the descriptor to be closed, and push the closed fd onto the head of the linked list:
         let last_closed = self.closed;
         let prev = std::mem::replace(self.get_mut(fd)?, Descriptor::Closed(last_closed));
@@ -307,6 +327,14 @@ impl Descriptors {
     pub fn get_file_with_error(&self, fd: Fd, error: Errno) -> Result<&File, Errno> {
         match self.get(fd)? {
             Descriptor::Streams(Streams {
+                type_:
+                    StreamType::File(File {
+                        descriptor_type: filesystem::DescriptorType::Directory,
+                        ..
+                    }),
+                ..
+            }) => Err(wasi::ERRNO_BADF),
+            Descriptor::Streams(Streams {
                 type_: StreamType::File(file),
                 ..
             }) => Ok(file),
@@ -332,7 +360,19 @@ impl Descriptors {
     }
 
     pub fn get_dir(&self, fd: Fd) -> Result<&File, Errno> {
-        self.get_file_with_error(fd, wasi::ERRNO_NOTDIR)
+        match self.get(fd)? {
+            Descriptor::Streams(Streams {
+                type_:
+                    StreamType::File(
+                        file @ File {
+                            descriptor_type: filesystem::DescriptorType::Directory,
+                            ..
+                        },
+                    ),
+                ..
+            }) => Ok(file),
+            _ => Err(wasi::ERRNO_BADF),
+        }
     }
 
     pub fn get_seekable_file(&self, fd: Fd) -> Result<&File, Errno> {

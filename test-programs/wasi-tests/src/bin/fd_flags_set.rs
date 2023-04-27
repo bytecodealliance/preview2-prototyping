@@ -10,11 +10,7 @@ unsafe fn test_fd_fdstat_set_flags(dir_fd: wasi::Fd) {
         0,
         FILE_NAME,
         wasi::OFLAGS_CREAT,
-        wasi::RIGHTS_FD_READ
-            | wasi::RIGHTS_FD_WRITE
-            | wasi::RIGHTS_FD_SEEK
-            | wasi::RIGHTS_FD_TELL
-            | wasi::RIGHTS_FD_FDSTAT_SET_FLAGS,
+        wasi::RIGHTS_FD_READ | wasi::RIGHTS_FD_WRITE,
         0,
         wasi::FDFLAGS_APPEND,
     )
@@ -57,7 +53,9 @@ unsafe fn test_fd_fdstat_set_flags(dir_fd: wasi::Fd) {
 
     let data = &[1u8; 100];
 
-    // Seek back to the start to ensure we're in append-only mode
+    // Seek back to the start. Since the append flag is set, writes should not
+    // be affected by this seek, and start writing at offs 100 instead of 0
+    // set here.
     wasi::fd_seek(file_fd, 0, wasi::WHENCE_SET).expect("seeking file");
 
     assert_eq!(
@@ -74,6 +72,7 @@ unsafe fn test_fd_fdstat_set_flags(dir_fd: wasi::Fd) {
         data.len(),
     );
 
+    // seek to 100 to read what we just appended.
     wasi::fd_seek(file_fd, 100, wasi::WHENCE_SET).expect("seeking file");
 
     assert_eq!(
@@ -92,9 +91,11 @@ unsafe fn test_fd_fdstat_set_flags(dir_fd: wasi::Fd) {
 
     assert_eq!(&data[..], &buffer[..]);
 
+    // Clear the append fdflag.
     wasi::fd_fdstat_set_flags(file_fd, 0).expect("disabling flags");
 
-    // Overwrite some existing data to ensure the append mode is now off
+    // Overwrite some existing data. Now that append mode is disabled, this
+    // seek will set the offset that the following write happens at.
     wasi::fd_seek(file_fd, 0, wasi::WHENCE_SET).expect("seeking file");
 
     let data = &[2u8; 100];
@@ -113,6 +114,7 @@ unsafe fn test_fd_fdstat_set_flags(dir_fd: wasi::Fd) {
         data.len(),
     );
 
+    // Seek back to 0 to read back what was just written.
     wasi::fd_seek(file_fd, 0, wasi::WHENCE_SET).expect("seeking file");
 
     assert_eq!(

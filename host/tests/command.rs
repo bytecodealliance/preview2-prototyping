@@ -1,7 +1,7 @@
 use anyhow::Result;
 use cap_rand::RngCore;
 use cap_std::{ambient_authority, fs::Dir, time::Duration};
-use host::{command::add_to_linker, command::wasi::Command, WasiCtx};
+use host::{wasi::command::add_to_linker, wasi::command::Command, WasiCtx};
 use std::{
     io::{Cursor, Write},
     sync::Mutex,
@@ -306,7 +306,18 @@ async fn run_default_clocks(mut store: Store<WasiCtx>, wasi: Command) -> Result<
 async fn run_with_temp_dir(mut store: Store<WasiCtx>, wasi: Command) -> Result<()> {
     let dir = tempfile::tempdir()?;
 
-    store.data_mut().push_env("NO_RIGHTS_READBACK_SUPPORT", "1");
+    if cfg!(windows) {
+        store.data_mut().push_env("ERRNO_MODE_WINDOWS", "1");
+        store.data_mut().push_env("NO_FDFLAGS_SYNC_SUPPORT", "1");
+        store.data_mut().push_env("NO_DANGLING_FILESYSTEM", "1");
+        store.data_mut().push_env("NO_RENAME_DIR_TO_EMPTY_DIR", "1");
+    }
+    if cfg!(all(unix, not(target_os = "macos"))) {
+        store.data_mut().push_env("ERRNO_MODE_UNIX", "1");
+    }
+    if cfg!(target_os = "macos") {
+        store.data_mut().push_env("ERRNO_MODE_MACOS", "1");
+    }
 
     let open_dir = Dir::open_ambient_dir(dir.path(), ambient_authority())?;
     store.data_mut().push_preopened_dir(
@@ -337,31 +348,23 @@ async fn run_overwrite_preopen(store: Store<WasiCtx>, wasi: Command) -> Result<(
 }
 
 async fn run_dangling_fd(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
-    if cfg!(windows) {
-        expect_fail(run_with_temp_dir(store, wasi).await)
-    } else {
-        run_with_temp_dir(store, wasi).await
-    }
+    run_with_temp_dir(store, wasi).await
 }
 
 async fn run_dangling_symlink(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
-    if cfg!(windows) {
-        expect_fail(run_with_temp_dir(store, wasi).await)
-    } else {
-        run_with_temp_dir(store, wasi).await
-    }
+    run_with_temp_dir(store, wasi).await
 }
 
 async fn run_directory_seek(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
-    expect_fail(run_with_temp_dir(store, wasi).await)
+    run_with_temp_dir(store, wasi).await
 }
 
 async fn run_fd_advise(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
-    expect_fail(run_with_temp_dir(store, wasi).await)
+    run_with_temp_dir(store, wasi).await
 }
 
 async fn run_fd_filestat_get(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
-    expect_fail(run_with_temp_dir(store, wasi).await)
+    run_with_temp_dir(store, wasi).await
 }
 
 async fn run_fd_filestat_set(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
@@ -369,7 +372,7 @@ async fn run_fd_filestat_set(store: Store<WasiCtx>, wasi: Command) -> Result<()>
 }
 
 async fn run_fd_flags_set(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
-    expect_fail(run_with_temp_dir(store, wasi).await)
+    run_with_temp_dir(store, wasi).await
 }
 
 async fn run_fd_readdir(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
@@ -377,7 +380,7 @@ async fn run_fd_readdir(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
 }
 
 async fn run_file_allocate(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
-    expect_fail(run_with_temp_dir(store, wasi).await)
+    run_with_temp_dir(store, wasi).await
 }
 
 async fn run_file_pread_pwrite(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
@@ -385,7 +388,7 @@ async fn run_file_pread_pwrite(store: Store<WasiCtx>, wasi: Command) -> Result<(
 }
 
 async fn run_file_seek_tell(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
-    expect_fail(run_with_temp_dir(store, wasi).await)
+    run_with_temp_dir(store, wasi).await
 }
 
 async fn run_file_truncation(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
@@ -417,15 +420,11 @@ async fn run_path_exists(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
 }
 
 async fn run_path_filestat(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
-    expect_fail(run_with_temp_dir(store, wasi).await)
+    run_with_temp_dir(store, wasi).await
 }
 
 async fn run_path_link(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
-    if cfg!(windows) {
-        expect_fail(run_with_temp_dir(store, wasi).await)
-    } else {
-        run_with_temp_dir(store, wasi).await
-    }
+    run_with_temp_dir(store, wasi).await
 }
 
 async fn run_path_open_create_existing(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
@@ -433,6 +432,7 @@ async fn run_path_open_create_existing(store: Store<WasiCtx>, wasi: Command) -> 
 }
 
 async fn run_path_open_dirfd_not_dir(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
+    // expected NOTDIR, got BADF, on call to path_open on a filefd.
     expect_fail(run_with_temp_dir(store, wasi).await)
 }
 
@@ -440,16 +440,8 @@ async fn run_path_open_missing(store: Store<WasiCtx>, wasi: Command) -> Result<(
     run_with_temp_dir(store, wasi).await
 }
 
-async fn run_path_open_read_without_rights(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
-    expect_fail(run_with_temp_dir(store, wasi).await)
-}
-
 async fn run_path_rename(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
-    if cfg!(windows) {
-        expect_fail(run_with_temp_dir(store, wasi).await)
-    } else {
-        run_with_temp_dir(store, wasi).await
-    }
+    run_with_temp_dir(store, wasi).await
 }
 
 async fn run_path_rename_dir_trailing_slashes(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
@@ -457,19 +449,20 @@ async fn run_path_rename_dir_trailing_slashes(store: Store<WasiCtx>, wasi: Comma
 }
 
 async fn run_path_rename_file_trailing_slashes(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
+    // renaming a file with trailing slash in destination name expected to fail, but succeeds: line 18
     expect_fail(run_with_temp_dir(store, wasi).await)
 }
 
 async fn run_path_symlink_trailing_slashes(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
+    run_with_temp_dir(store, wasi).await
+}
+
+async fn run_poll_oneoff_files(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
     if cfg!(windows) {
         expect_fail(run_with_temp_dir(store, wasi).await)
     } else {
         run_with_temp_dir(store, wasi).await
     }
-}
-
-async fn run_poll_oneoff_files(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
-    expect_fail(run_with_temp_dir(store, wasi).await)
 }
 
 async fn run_poll_oneoff_stdio(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
@@ -481,10 +474,12 @@ async fn run_poll_oneoff_stdio(store: Store<WasiCtx>, wasi: Command) -> Result<(
 }
 
 async fn run_readlink(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
-    expect_fail(run_with_temp_dir(store, wasi).await)
+    run_with_temp_dir(store, wasi).await
 }
 
 async fn run_remove_directory_trailing_slashes(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
+    // removing a directory with a trailing slash in the path succeeded under preview 1,
+    // fails now returning INVAL
     expect_fail(run_with_temp_dir(store, wasi).await)
 }
 
@@ -493,7 +488,7 @@ async fn run_remove_nonempty_directory(store: Store<WasiCtx>, wasi: Command) -> 
 }
 
 async fn run_renumber(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
-    expect_fail(run_with_temp_dir(store, wasi).await)
+    run_with_temp_dir(store, wasi).await
 }
 
 async fn run_sched_yield(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
@@ -513,15 +508,7 @@ async fn run_symlink_filestat(store: Store<WasiCtx>, wasi: Command) -> Result<()
 }
 
 async fn run_symlink_loop(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
-    if cfg!(windows) {
-        expect_fail(run_with_temp_dir(store, wasi).await)
-    } else {
-        run_with_temp_dir(store, wasi).await
-    }
-}
-
-async fn run_truncation_rights(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
-    expect_fail(run_with_temp_dir(store, wasi).await)
+    run_with_temp_dir(store, wasi).await
 }
 
 async fn run_unlink_file_trailing_slashes(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
@@ -553,4 +540,8 @@ async fn run_read_only(mut store: Store<WasiCtx>, wasi: Command) -> Result<()> {
         .map_err(|()| anyhow::anyhow!("command returned with failing exit status"))?;
 
     Ok(())
+}
+
+async fn run_dir_fd_op_failures(store: Store<WasiCtx>, wasi: Command) -> Result<()> {
+    run_with_temp_dir(store, wasi).await
 }
