@@ -746,6 +746,7 @@ dependencies = [
  "cap-rand",
  "cap-std",
  "clap",
+ "lazy_static",
  "tempfile",
  "test-log",
  "test-programs-macros",
