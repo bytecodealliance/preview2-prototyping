@@ -4,7 +4,17 @@ version.workspace = true
 edition.workspace = true
 
 [workspace]
-members = ["verify", "host", "test-programs", "test-programs/wasi-tests", "test-programs/reactor-tests", "wasi-common", "byte-array", "wasi"]
+members = [
+    "verify",
+    "host",
+    "test-programs",
+    "test-programs/wasi-tests",
+    "test-programs/reactor-tests",
+    "wasi-common",
+    "wasmtime-wasi-sockets",
+    "byte-array",
+    "wasi"
+]
 
 [workspace.package]
 version = "0.0.0"
@@ -12,6 +22,11 @@ authors = ["The Wasmtime Project Developers"]
 edition = "2021"
 
 [workspace.dependencies]
+wasi-common = { path = "wasi-common" }
+wasi-cap-std-sync = { path = "wasi-common/cap-std-sync" }
+wasmtime = { git = "https://github.com/bytecodealliance/wasmtime", rev = "299131ae2d6655c49138bfab2c4469650763ef3b", features = ["component-model"] }
+host = { path = "host" }
+
 anyhow = "1.0.22"
 thiserror = "1.0.15"
 tracing = "0.1.26"
@@ -24,7 +39,6 @@ windows-sys = "0.48.0"
 rustix = "0.37.9"
 async-trait = "0.1.59"
 io-lifetimes = { version = "1.0.0", default-features = false }
-wasi-common = { path = "wasi-common" }
 once_cell = "1.12.0"
 system-interface = { version = "0.25.1", features = ["cap_std_impls"] }
 wit-bindgen = { version = "0.4.0", default-features = false }

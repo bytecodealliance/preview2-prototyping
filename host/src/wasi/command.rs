@@ -41,6 +41,7 @@ pub fn add_to_linker<T: Send>(
     crate::wasi::poll::add_to_linker(l, f)?;
     crate::wasi::streams::add_to_linker(l, f)?;
     crate::wasi::random::add_to_linker(l, f)?;
+    /*
     crate::wasi::tcp::add_to_linker(l, f)?;
     crate::wasi::tcp_create_socket::add_to_linker(l, f)?;
     crate::wasi::udp::add_to_linker(l, f)?;
@@ -48,6 +49,7 @@ pub fn add_to_linker<T: Send>(
     crate::wasi::ip_name_lookup::add_to_linker(l, f)?;
     crate::wasi::instance_network::add_to_linker(l, f)?;
     crate::wasi::network::add_to_linker(l, f)?;
+    */
     crate::wasi::exit::add_to_linker(l, f)?;
     crate::wasi::environment::add_to_linker(l, f)?;
     crate::wasi::preopens::add_to_linker(l, f)?;
