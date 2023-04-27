@@ -528,8 +528,7 @@ async fn path_open_create_existing() -> Result<()> {
 
 #[test_log::test(tokio::test)]
 async fn path_open_dirfd_not_dir() -> Result<()> {
-    // expected NOTDIR, got BADF, on call to path_open on a filefd.
-    expect_fail(run_with_temp_dir("path_open_dirfd_not_dir").await)
+    run_with_temp_dir("path_open_dirfd_not_dir").await
 }
 
 #[test_log::test(tokio::test)]

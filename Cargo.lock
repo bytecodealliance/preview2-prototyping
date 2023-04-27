@@ -683,7 +683,7 @@ checksum = "c85e1d9ab2eadba7e5040d4e09cbd6d072b76a557ad64e797c2cb9d4da21d7e4"
 dependencies = [
  "cfg-if",
  "libc",
- "wasi 0.11.0+wasi-snapshot-preview1",
+ "wasi",
 ]
 
 [[package]]
@@ -1651,15 +1651,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c8d87e72b64a3b4db28d11ce29237c246188f4f51057d65a7eab63b7987e423"
 
 [[package]]
-name = "wasi"
-version = "0.12.0+wasi-snapshot-preview2"
-dependencies = [
- "anyhow",
- "http",
- "wit-bindgen",
-]
-
-[[package]]
 name = "wasi-cap-std-sync"
 version = "0.0.0"
 dependencies = [
@@ -1705,12 +1696,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "wasi-preview2-prototype"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "http",
+ "wit-bindgen",
+]
+
+[[package]]
 name = "wasi-tests"
 version = "0.0.0"
 dependencies = [
  "libc",
  "once_cell",
- "wasi 0.11.0+wasi-snapshot-preview1",
+ "wasi",
 ]
 
 [[package]]
@@ -1719,7 +1720,7 @@ version = "0.0.0"
 dependencies = [
  "byte-array",
  "object",
- "wasi 0.11.0+wasi-snapshot-preview1",
+ "wasi",
  "wasm-encoder 0.25.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "wit-bindgen",
 ]
