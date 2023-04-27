@@ -1,5 +1,5 @@
-#[cfg(feature = "http")]
-pub mod http;
+#[cfg(feature = "http-client")]
+pub mod http_client;
 
 pub mod snapshots {
     pub mod preview_2 {
