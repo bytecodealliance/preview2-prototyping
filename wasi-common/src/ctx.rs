@@ -1,11 +1,9 @@
 use crate::clocks::WasiClocks;
 use crate::dir::WasiDir;
-use crate::network::WasiNetwork;
 use crate::sched::WasiSched;
 use crate::stream::{InputStream, OutputStream};
 use crate::table::Table;
 use cap_rand::RngCore;
-use cap_std::ambient_authority;
 
 #[derive(Default)]
 pub struct WasiCtxBuilder {

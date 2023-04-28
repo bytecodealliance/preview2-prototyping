@@ -3,11 +3,10 @@ use crate::{
     wasi::monotonic_clock::Instant,
     wasi::poll::Pollable,
     wasi::streams::{InputStream, OutputStream, StreamError},
-    wasi::tcp::TcpSocket,
     WasiCtx,
 };
 use wasi_common::stream::TableStreamExt;
-use wasi_common::tcp_socket::TableTcpSocketExt;
+use wasmtime_wasi_sockets::{tcp_socket::TableTcpSocketExt, wasi::tcp::TcpSocket};
 
 fn convert(error: wasi_common::Error) -> anyhow::Error {
     if let Some(_errno) = error.downcast_ref() {

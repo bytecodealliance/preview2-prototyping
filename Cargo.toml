@@ -12,6 +12,7 @@ members = [
     "test-programs/reactor-tests",
     "wasi-common",
     "wasmtime-wasi-sockets",
+    "wasmtime-wasi-sockets/sync",
     "byte-array",
     "wasi"
 ]
@@ -22,9 +23,12 @@ authors = ["The Wasmtime Project Developers"]
 edition = "2021"
 
 [workspace.dependencies]
+wasmtime = { git = "https://github.com/bytecodealliance/wasmtime", rev = "299131ae2d6655c49138bfab2c4469650763ef3b", features = ["component-model"] }
+
 wasi-common = { path = "wasi-common" }
 wasi-cap-std-sync = { path = "wasi-common/cap-std-sync" }
-wasmtime = { git = "https://github.com/bytecodealliance/wasmtime", rev = "299131ae2d6655c49138bfab2c4469650763ef3b", features = ["component-model"] }
+wasmtime-wasi-sockets = { path = "wasmtime-wasi-sockets" }
+wasmtime-wasi-sockets-sync = { path = "wasmtime-wasi-sockets/sync" }
 host = { path = "host" }
 
 anyhow = "1.0.22"

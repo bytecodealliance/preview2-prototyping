@@ -1,11 +1,12 @@
 use cap_net_ext::{AddressFamily, Blocking, PoolExt, TcpListenerExt, UdpSocketExt};
-use cap_std::net::{Pool, Shutdown, SocketAddr, TcpListener, TcpStream};
+use cap_std::net::{Ipv4Addr, Ipv6Addr, Pool, Shutdown, SocketAddr, TcpListener, TcpStream};
 use io_extras::borrowed::BorrowedReadable;
 #[cfg(windows)]
 use io_extras::os::windows::{AsHandleOrSocket, BorrowedHandleOrSocket};
 use io_lifetimes::AsSocketlike;
 #[cfg(windows)]
 use io_lifetimes::{AsSocket, BorrowedSocket};
+use ipnet::IpNet;
 use rustix::fd::{AsFd, BorrowedFd, OwnedFd};
 use std::any::Any;
 use std::convert::TryInto;
@@ -13,11 +14,13 @@ use std::io::{self, Read, Write};
 use std::sync::Arc;
 use system_interface::io::{IoExt, IsReadWrite, ReadReady};
 use wasi_common::{
-    network::WasiNetwork,
     stream::{InputStream, OutputStream},
+    Error, ErrorExt,
+};
+use wasmtime_wasi_sockets::{
+    network::WasiNetwork,
     tcp_socket::WasiTcpSocket,
     udp_socket::{RiFlags, RoFlags, WasiUdpSocket},
-    Error, ErrorExt,
 };
 
 pub struct Network(Pool);
@@ -449,5 +452,34 @@ pub fn is_read_write<Socketlike: AsSocketlike>(f: Socketlike) -> io::Result<(boo
     {
         f.as_socketlike_view::<cap_std::net::TcpStream>()
             .is_read_write()
+    }
+}
+
+fn create_network(pool: Pool) -> Result<Box<dyn WasiNetwork>, Error> {
+    let network: Box<dyn WasiNetwork> = Box::new(Network::new(pool));
+    Ok(network)
+}
+
+fn create_tcp_socket(address_family: AddressFamily) -> Result<Box<dyn WasiTcpSocket>, Error> {
+    let socket: Box<dyn WasiTcpSocket> = Box::new(TcpSocket::new(address_family)?);
+    Ok(socket)
+}
+
+pub struct WasiSocketsCtxBuilder(WasiSocketsCtx);
+
+impl WasiSocketsCtxBuilder {
+    pub fn inherit_network(mut self, ambient_authority: AmbientAuthority) -> Self {
+        self.0.pool.insert_ip_net_port_any(
+            IpNet::new(Ipv4Addr::UNSPECIFIED.into(), 0).unwrap(),
+            ambient_authority,
+        );
+        self.0.pool.insert_ip_net_port_any(
+            IpNet::new(Ipv6Addr::UNSPECIFIED.into(), 0).unwrap(),
+            ambient_authority,
+        );
+        self
+    }
+    pub fn build(self) -> WasiSocketsCtx {
+        self.0
     }
 }
