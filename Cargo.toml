@@ -25,10 +25,12 @@ rustix = "0.37.9"
 async-trait = "0.1.59"
 io-lifetimes = { version = "1.0.0", default-features = false }
 wasi-common = { path = "wasi-common" }
+wasi-cap-std-sync = { path = "wasi-common/cap-std-sync" }
 once_cell = "1.12.0"
 system-interface = { version = "0.25.1", features = ["cap_std_impls"] }
 wit-bindgen = { version = "0.4.0", default-features = false }
 ipnet = "2" # TODO: Move to cap_std::ipnet instead, when that's released.
+wasmtime = { git = "https://github.com/bytecodealliance/wasmtime", rev = "299131ae2d6655c49138bfab2c4469650763ef3b", features = ["component-model"] }
 
 [dependencies]
 wasi = { version = "0.11.0", default-features = false }
