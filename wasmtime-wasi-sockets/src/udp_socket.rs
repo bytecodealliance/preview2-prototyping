@@ -41,11 +41,11 @@ pub trait TableUdpSocketExt {
     fn get_udp_socket(&self, fd: u32) -> Result<&dyn WasiUdpSocket, Error>;
     fn get_udp_socket_mut(&mut self, fd: u32) -> Result<&mut Box<dyn WasiUdpSocket>, Error>;
 }
-impl TableUdpSocketExt for crate::table::Table {
+impl TableUdpSocketExt for wasi_common::Table {
     fn get_udp_socket(&self, fd: u32) -> Result<&dyn WasiUdpSocket, Error> {
-        self.get::<Box<dyn WasiUdpSocket>>(fd).map(|f| f.as_ref())
+        Ok(self.get::<Box<dyn WasiUdpSocket>>(fd).map(|f| f.as_ref())?)
     }
     fn get_udp_socket_mut(&mut self, fd: u32) -> Result<&mut Box<dyn WasiUdpSocket>, Error> {
-        self.get_mut::<Box<dyn WasiUdpSocket>>(fd)
+        Ok(self.get_mut::<Box<dyn WasiUdpSocket>>(fd)?)
     }
 }

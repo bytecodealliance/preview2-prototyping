@@ -9,18 +9,72 @@ mod network_impl;
 mod tcp;
 mod tcp_socket;
 mod udp;
+mod udp_socket;
 pub mod wasi;
 pub use network::WasiNetwork;
 pub use tcp_socket::WasiTcpSocket;
+pub use udp_socket::WasiUdpSocket;
 
 pub type NetworkCreator = Box<dyn Fn(Pool) -> Result<Box<dyn WasiNetwork>, Error> + Send + Sync>;
 pub type TcpSocketCreator =
     Box<dyn Fn(AddressFamily) -> Result<Box<dyn WasiTcpSocket>, Error> + Send + Sync>;
 
 pub struct WasiSocketsCtx {
-    pub pool: Pool,
-    pub network_creator: NetworkCreator,
-    pub tcp_socket_creator: TcpSocketCreator,
+    pool: Pool,
+    network_creator: NetworkCreator,
+    tcp_socket_creator: TcpSocketCreator,
+}
+
+impl WasiSocketsCtx {
+    pub fn new(
+        pool: Pool,
+        network_creator: NetworkCreator,
+        tcp_socket_creator: TcpSocketCreator,
+    ) -> Self {
+        Self {
+            pool,
+            network_creator,
+            tcp_socket_creator,
+        }
+    }
+
+    /// Add network addresses to the pool.
+    pub fn insert_addr<A: cap_std::net::ToSocketAddrs>(&mut self, addrs: A) -> std::io::Result<()> {
+        self.pool.insert(addrs, ambient_authority())
+    }
+
+    /// Add a specific [`cap_std::net::SocketAddr`] to the pool.
+    pub fn insert_socket_addr(&mut self, addr: cap_std::net::SocketAddr) {
+        self.pool.insert_socket_addr(addr, ambient_authority());
+    }
+
+    /// Add a range of network addresses, accepting any port, to the pool.
+    ///
+    /// Unlike `insert_ip_net`, this function grants access to any requested port.
+    pub fn insert_ip_net_port_any(&mut self, ip_net: ipnet::IpNet) {
+        self.pool
+            .insert_ip_net_port_any(ip_net, ambient_authority())
+    }
+
+    /// Add a range of network addresses, accepting a range of ports, to
+    /// per-instance networks.
+    ///
+    /// This grants access to the port range starting at `ports_start` and, if
+    /// `ports_end` is provided, ending before `ports_end`.
+    pub fn insert_ip_net_port_range(
+        &mut self,
+        ip_net: ipnet::IpNet,
+        ports_start: u16,
+        ports_end: Option<u16>,
+    ) {
+        self.pool
+            .insert_ip_net_port_range(ip_net, ports_start, ports_end, ambient_authority())
+    }
+
+    /// Add a range of network addresses with a specific port to the pool.
+    pub fn insert_ip_net(&mut self, ip_net: ipnet::IpNet, port: u16) {
+        self.pool.insert_ip_net(ip_net, port, ambient_authority())
+    }
 }
 
 pub trait WasiSocketsView: Send {
