@@ -1751,11 +1751,9 @@ dependencies = [
  "async-trait",
  "bitflags",
  "cap-fs-ext",
- "cap-net-ext",
  "cap-rand",
  "cap-std",
  "io-extras",
- "ipnet",
  "rustix 0.37.9",
  "system-interface",
  "thiserror",
@@ -2112,6 +2110,47 @@ dependencies = [
  "serde",
  "thiserror",
  "wasmparser 0.103.0",
+]
+
+[[package]]
+name = "wasmtime-wasi-sockets"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bitflags",
+ "cap-net-ext",
+ "cap-std",
+ "ipnet",
+ "rustix 0.37.9",
+ "tracing",
+ "wasi-common",
+ "wasmtime",
+]
+
+[[package]]
+name = "wasmtime-wasi-sockets-sync"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "cap-fs-ext",
+ "cap-net-ext",
+ "cap-rand",
+ "cap-std",
+ "cap-time-ext",
+ "fs-set-times",
+ "io-extras",
+ "io-lifetimes",
+ "ipnet",
+ "is-terminal",
+ "once_cell",
+ "rustix 0.37.9",
+ "system-interface",
+ "tracing",
+ "wasi-common",
+ "wasmtime-wasi-sockets",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

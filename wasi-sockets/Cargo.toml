@@ -1,0 +1,17 @@
+[package]
+name = "wasmtime-wasi-sockets"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+bitflags = { workspace = true }
+cap-std = { workspace = true }
+cap-net-ext = { workspace = true }
+rustix = { workspace = true }
+tracing = { workspace = true }
+wasmtime = { workspace = true }
+wasi-common = { workspace = true }
+ipnet = { workspace = true }

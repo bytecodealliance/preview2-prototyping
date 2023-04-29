@@ -1,9 +1,10 @@
 //! TCP sockets.
 
-use crate::Error;
-use crate::{InputStream, OutputStream, WasiNetwork};
+use crate::WasiNetwork;
+use anyhow::Error;
 use cap_std::net::{Shutdown, SocketAddr};
 use std::any::Any;
+use wasi_common::{InputStream, OutputStream};
 
 /// A TCP socket.
 #[async_trait::async_trait]
@@ -58,11 +59,11 @@ pub trait TableTcpSocketExt {
     fn get_tcp_socket(&self, fd: u32) -> Result<&dyn WasiTcpSocket, Error>;
     fn get_tcp_socket_mut(&mut self, fd: u32) -> Result<&mut Box<dyn WasiTcpSocket>, Error>;
 }
-impl TableTcpSocketExt for crate::table::Table {
+impl TableTcpSocketExt for wasi_common::Table {
     fn get_tcp_socket(&self, fd: u32) -> Result<&dyn WasiTcpSocket, Error> {
-        self.get::<Box<dyn WasiTcpSocket>>(fd).map(|f| f.as_ref())
+        Ok(self.get::<Box<dyn WasiTcpSocket>>(fd).map(|f| f.as_ref())?)
     }
     fn get_tcp_socket_mut(&mut self, fd: u32) -> Result<&mut Box<dyn WasiTcpSocket>, Error> {
-        self.get_mut::<Box<dyn WasiTcpSocket>>(fd)
+        Ok(self.get_mut::<Box<dyn WasiTcpSocket>>(fd)?)
     }
 }
