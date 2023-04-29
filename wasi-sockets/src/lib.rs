@@ -14,7 +14,7 @@ mod udp_socket;
 pub mod wasi;
 pub use network::WasiNetwork;
 pub use tcp_socket::WasiTcpSocket;
-pub use udp_socket::WasiUdpSocket;
+pub use udp_socket::{RiFlags, RoFlags, WasiUdpSocket};
 
 pub type NetworkCreator = Box<dyn Fn(Pool) -> Result<Box<dyn WasiNetwork>, Error> + Send + Sync>;
 pub type TcpSocketCreator =

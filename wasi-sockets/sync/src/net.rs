@@ -12,13 +12,9 @@ use std::convert::TryInto;
 use std::io::{self, Read, Write};
 use std::sync::Arc;
 use system_interface::io::{IoExt, IsReadWrite, ReadReady};
-use wasi_common::{
-    network::WasiNetwork,
-    stream::{InputStream, OutputStream},
-    tcp_socket::WasiTcpSocket,
-    udp_socket::{RiFlags, RoFlags, WasiUdpSocket},
-    Error, ErrorExt,
-};
+use wasi_common::stream::{InputStream, OutputStream};
+use wasi_common::ErrorExt;
+use wasmtime_wasi_sockets::{RiFlags, RoFlags, WasiNetwork, WasiTcpSocket, WasiUdpSocket};
 
 pub struct Network(Pool);
 pub struct TcpSocket(Arc<TcpListener>);
@@ -75,7 +71,7 @@ impl WasiTcpSocket for TcpSocket {
         &self,
         network: &dyn WasiNetwork,
         local_address: SocketAddr,
-    ) -> Result<(), Error> {
+    ) -> Result<(), anyhow::Error> {
         network
             .pool()
             .bind_existing_tcp_listener(&self.0, local_address)?;
@@ -85,7 +81,7 @@ impl WasiTcpSocket for TcpSocket {
     async fn listen(
         &self,
         _network: &dyn WasiNetwork, // FIXME: Can we remove this from the wit?
-    ) -> Result<(), Error> {
+    ) -> Result<(), anyhow::Error> {
         self.0.listen(None)?;
         Ok(())
     }
@@ -100,7 +96,7 @@ impl WasiTcpSocket for TcpSocket {
             Box<dyn OutputStream>,
             SocketAddr,
         ),
-        Error,
+        anyhow::Error,
     > {
         let blocking = match nonblocking {
             true => Blocking::No,
@@ -122,7 +118,7 @@ impl WasiTcpSocket for TcpSocket {
         &self,
         network: &dyn WasiNetwork,
         remote_address: SocketAddr,
-    ) -> Result<(Box<dyn InputStream>, Box<dyn OutputStream>), Error> {
+    ) -> Result<(Box<dyn InputStream>, Box<dyn OutputStream>), anyhow::Error> {
         network
             .pool()
             .connect_existing_tcp_listener(&self.0, remote_address)?;
@@ -131,58 +127,58 @@ impl WasiTcpSocket for TcpSocket {
         Ok((Box::new(input_stream), Box::new(output_stream)))
     }
 
-    async fn shutdown(&self, how: Shutdown) -> Result<(), Error> {
+    async fn shutdown(&self, how: Shutdown) -> Result<(), anyhow::Error> {
         self.as_socketlike_view::<TcpStream>().shutdown(how)?;
         Ok(())
     }
 
-    fn local_address(&self) -> Result<SocketAddr, Error> {
+    fn local_address(&self) -> Result<SocketAddr, anyhow::Error> {
         Ok(self.as_socketlike_view::<TcpStream>().local_addr()?)
     }
 
-    fn remote_address(&self) -> Result<SocketAddr, Error> {
+    fn remote_address(&self) -> Result<SocketAddr, anyhow::Error> {
         Ok(self.as_socketlike_view::<TcpStream>().peer_addr()?)
     }
 
-    fn nodelay(&self) -> Result<bool, Error> {
+    fn nodelay(&self) -> Result<bool, anyhow::Error> {
         let value = self.as_socketlike_view::<TcpStream>().nodelay()?;
         Ok(value)
     }
 
-    fn set_nodelay(&self, flag: bool) -> Result<(), Error> {
+    fn set_nodelay(&self, flag: bool) -> Result<(), anyhow::Error> {
         self.as_socketlike_view::<TcpStream>().set_nodelay(flag)?;
         Ok(())
     }
 
-    fn v6_only(&self) -> Result<bool, Error> {
+    fn v6_only(&self) -> Result<bool, anyhow::Error> {
         let value = rustix::net::sockopt::get_ipv6_v6only(self).map_err(io::Error::from)?;
         Ok(value)
     }
 
-    fn set_v6_only(&self, value: bool) -> Result<(), Error> {
+    fn set_v6_only(&self, value: bool) -> Result<(), anyhow::Error> {
         rustix::net::sockopt::set_ipv6_v6only(self, value).map_err(io::Error::from)?;
         Ok(())
     }
 
-    fn set_nonblocking(&mut self, flag: bool) -> Result<(), Error> {
+    fn set_nonblocking(&mut self, flag: bool) -> Result<(), anyhow::Error> {
         self.as_socketlike_view::<TcpStream>()
             .set_nonblocking(flag)?;
         Ok(())
     }
 
-    async fn readable(&self) -> Result<(), Error> {
+    async fn readable(&self) -> Result<(), anyhow::Error> {
         if is_read_write(&*self.0)?.0 {
             Ok(())
         } else {
-            Err(Error::badf())
+            Err(anyhow::anyhow!("badf"))
         }
     }
 
-    async fn writable(&self) -> Result<(), Error> {
+    async fn writable(&self) -> Result<(), anyhow::Error> {
         if is_read_write(&*self.0)?.1 {
             Ok(())
         } else {
-            Err(Error::badf())
+            Err(anyhow::anyhow!("badf"))
         }
     }
 }
@@ -193,7 +189,7 @@ impl WasiUdpSocket for UdpSocket {
         self
     }
 
-    fn set_nonblocking(&mut self, flag: bool) -> Result<(), Error> {
+    fn set_nonblocking(&mut self, flag: bool) -> Result<(), anyhow::Error> {
         self.0
             .as_socketlike_view::<TcpStream>()
             .set_nonblocking(flag)?;
@@ -204,9 +200,9 @@ impl WasiUdpSocket for UdpSocket {
         &mut self,
         ri_data: &mut [io::IoSliceMut<'a>],
         ri_flags: RiFlags,
-    ) -> Result<(u64, RoFlags), Error> {
+    ) -> Result<(u64, RoFlags), anyhow::Error> {
         if (ri_flags & !(RiFlags::RECV_PEEK | RiFlags::RECV_WAITALL)) != RiFlags::empty() {
-            return Err(Error::not_supported());
+            return Err(anyhow::anyhow!("not_supported"));
         }
 
         if ri_flags.contains(RiFlags::RECV_PEEK) {
@@ -233,7 +229,7 @@ impl WasiUdpSocket for UdpSocket {
         Ok((n as u64, RoFlags::empty()))
     }
 
-    async fn sock_send<'a>(&mut self, si_data: &[io::IoSlice<'a>]) -> Result<u64, Error> {
+    async fn sock_send<'a>(&mut self, si_data: &[io::IoSlice<'a>]) -> Result<u64, anyhow::Error> {
         let n = self
             .0
             .as_socketlike_view::<TcpStream>()
@@ -241,19 +237,19 @@ impl WasiUdpSocket for UdpSocket {
         Ok(n as u64)
     }
 
-    async fn readable(&self) -> Result<(), Error> {
+    async fn readable(&self) -> Result<(), anyhow::Error> {
         if is_read_write(&*self.0)?.0 {
             Ok(())
         } else {
-            Err(Error::badf())
+            Err(anyhow::anyhow!("badf"))
         }
     }
 
-    async fn writable(&self) -> Result<(), Error> {
+    async fn writable(&self) -> Result<(), anyhow::Error> {
         if is_read_write(&*self.0)?.1 {
             Ok(())
         } else {
-            Err(Error::badf())
+            Err(anyhow::anyhow!("badf"))
         }
     }
 }
@@ -273,7 +269,7 @@ impl InputStream for TcpSocket {
         Some(BorrowedHandleOrSocket::from_socket(self.as_socket()))
     }
 
-    async fn read(&mut self, buf: &mut [u8]) -> Result<(u64, bool), Error> {
+    async fn read(&mut self, buf: &mut [u8]) -> Result<(u64, bool), wasi_common::Error> {
         match Read::read(&mut &*self.as_socketlike_view::<TcpStream>(), buf) {
             Ok(0) => Ok((0, true)),
             Ok(n) => Ok((n as u64, false)),
@@ -284,7 +280,7 @@ impl InputStream for TcpSocket {
     async fn read_vectored<'a>(
         &mut self,
         bufs: &mut [io::IoSliceMut<'a>],
-    ) -> Result<(u64, bool), Error> {
+    ) -> Result<(u64, bool), wasi_common::Error> {
         match Read::read_vectored(&mut &*self.as_socketlike_view::<TcpStream>(), bufs) {
             Ok(0) => Ok((0, true)),
             Ok(n) => Ok((n as u64, false)),
@@ -297,7 +293,7 @@ impl InputStream for TcpSocket {
         Read::is_read_vectored(&mut &*self.as_socketlike_view::<TcpStream>())
     }
 
-    async fn skip(&mut self, nelem: u64) -> Result<(u64, bool), Error> {
+    async fn skip(&mut self, nelem: u64) -> Result<(u64, bool), wasi_common::Error> {
         let num = io::copy(
             &mut io::Read::take(&*self.as_socketlike_view::<TcpStream>(), nelem),
             &mut io::sink(),
@@ -305,16 +301,16 @@ impl InputStream for TcpSocket {
         Ok((num, num < nelem))
     }
 
-    async fn num_ready_bytes(&self) -> Result<u64, Error> {
+    async fn num_ready_bytes(&self) -> Result<u64, wasi_common::Error> {
         let val = self.as_socketlike_view::<TcpStream>().num_ready_bytes()?;
         Ok(val)
     }
 
-    async fn readable(&self) -> Result<(), Error> {
+    async fn readable(&self) -> Result<(), wasi_common::Error> {
         if is_read_write(&*self.as_socketlike_view::<TcpStream>())?.0 {
             Ok(())
         } else {
-            Err(Error::badf())
+            Err(wasi_common::Error::badf())
         }
     }
 }
@@ -335,11 +331,14 @@ impl OutputStream for TcpSocket {
         Some(BorrowedHandleOrSocket::from_socket(self.as_socket()))
     }
 
-    async fn write(&mut self, buf: &[u8]) -> Result<u64, Error> {
+    async fn write(&mut self, buf: &[u8]) -> Result<u64, wasi_common::Error> {
         let n = Write::write(&mut &*self.as_socketlike_view::<TcpStream>(), buf)?;
         Ok(n.try_into()?)
     }
-    async fn write_vectored<'a>(&mut self, bufs: &[io::IoSlice<'a>]) -> Result<u64, Error> {
+    async fn write_vectored<'a>(
+        &mut self,
+        bufs: &[io::IoSlice<'a>],
+    ) -> Result<u64, wasi_common::Error> {
         let n = Write::write_vectored(&mut &*self.as_socketlike_view::<TcpStream>(), bufs)?;
         Ok(n.try_into()?)
     }
@@ -351,7 +350,7 @@ impl OutputStream for TcpSocket {
         &mut self,
         src: &mut dyn InputStream,
         nelem: u64,
-    ) -> Result<(u64, bool), Error> {
+    ) -> Result<(u64, bool), wasi_common::Error> {
         if let Some(readable) = src.pollable_read() {
             let num = io::copy(
                 &mut io::Read::take(BorrowedReadable::borrow(readable), nelem),
@@ -362,18 +361,18 @@ impl OutputStream for TcpSocket {
             OutputStream::splice(self, src, nelem).await
         }
     }
-    async fn write_zeroes(&mut self, nelem: u64) -> Result<u64, Error> {
+    async fn write_zeroes(&mut self, nelem: u64) -> Result<u64, wasi_common::Error> {
         let num = io::copy(
             &mut io::Read::take(io::repeat(0), nelem),
             &mut &*self.as_socketlike_view::<TcpStream>(),
         )?;
         Ok(num)
     }
-    async fn writable(&self) -> Result<(), Error> {
+    async fn writable(&self) -> Result<(), wasi_common::Error> {
         if is_read_write(&*self.as_socketlike_view::<TcpStream>())?.1 {
             Ok(())
         } else {
-            Err(Error::badf())
+            Err(wasi_common::Error::badf())
         }
     }
 }
