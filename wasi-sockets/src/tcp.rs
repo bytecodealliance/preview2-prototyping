@@ -39,7 +39,7 @@ impl<T: WasiSocketsView> tcp::Host for T {
         &mut self,
         socket: TcpSocket,
     ) -> anyhow::Result<Result<(TcpSocket, InputStream, OutputStream), Error>> {
-        let table = self.table();
+        let table = self.table_mut();
         let socket = table.get_tcp_socket(socket)?;
 
         let (connection, input_stream, output_stream, _addr) = socket.accept(false).await?;
@@ -57,7 +57,7 @@ impl<T: WasiSocketsView> tcp::Host for T {
         network: Network,
         remote_address: IpSocketAddress,
     ) -> anyhow::Result<Result<(InputStream, OutputStream), Error>> {
-        let table = self.table();
+        let table = self.table_mut();
         let socket = table.get_tcp_socket(socket)?;
         let network = table.get_network(network)?;
 
@@ -260,7 +260,7 @@ impl<T: WasiSocketsView> tcp::Host for T {
     }
 
     async fn drop_tcp_socket(&mut self, this: TcpSocket) -> anyhow::Result<()> {
-        let table = self.table();
+        let table = self.table_mut();
         if !table.delete::<Box<dyn WasiTcpSocket>>(this).is_ok() {
             anyhow::bail!("{this} is not a socket");
         }
@@ -276,7 +276,7 @@ impl<T: WasiSocketsView> tcp_create_socket::Host for T {
     ) -> anyhow::Result<Result<TcpSocket, Error>> {
         let ctx = self.ctx();
         let socket = (ctx.tcp_socket_creator)(address_family.into())?;
-        let table = self.table();
+        let table = self.table_mut();
         let socket = table.push(Box::new(socket)).map_err(convert)?;
         Ok(Ok(socket))
     }

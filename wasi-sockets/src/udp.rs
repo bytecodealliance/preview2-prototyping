@@ -122,7 +122,8 @@ impl<T: WasiSocketsView> udp::Host for T {
         this: UdpSocket,
         value: bool,
     ) -> anyhow::Result<Result<(), Error>> {
-        let this = self.table().get_udp_socket_mut(this)?;
+        let table = self.table_mut();
+        let this = table.get_udp_socket_mut(this)?;
         this.set_nonblocking(value)?;
         Ok(Ok(()))
     }

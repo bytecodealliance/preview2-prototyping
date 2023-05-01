@@ -12,7 +12,7 @@ pub(crate) fn convert(_error: wasi_common::Error) -> anyhow::Error {
 #[async_trait::async_trait]
 impl<T: WasiSocketsView> network::Host for T {
     async fn drop_network(&mut self, this: Network) -> anyhow::Result<()> {
-        let table = self.table();
+        let table = self.table_mut();
         if !table.delete::<Box<dyn WasiNetwork>>(this).is_ok() {
             anyhow::bail!("{this} is not a network");
         }
@@ -25,7 +25,7 @@ impl<T: WasiSocketsView> instance_network::Host for T {
     async fn instance_network(&mut self) -> anyhow::Result<Network> {
         let ctx = self.ctx();
         let network = (ctx.network_creator)(ctx.pool.clone())?;
-        let table = self.table();
+        let table = self.table_mut();
         let network = table.push(Box::new(network)).map_err(convert)?;
         Ok(network)
     }

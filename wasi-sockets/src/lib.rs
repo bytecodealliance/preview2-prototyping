@@ -79,8 +79,10 @@ impl WasiSocketsCtx {
 }
 
 pub trait WasiSocketsView: Send {
-    fn ctx(&mut self) -> &mut WasiSocketsCtx;
-    fn table(&mut self) -> &mut Table;
+    fn table(&self) -> &Table;
+    fn table_mut(&mut self) -> &mut Table;
+    fn ctx(&self) -> &WasiSocketsCtx;
+    fn ctx_mut(&mut self) -> &mut WasiSocketsCtx;
 }
 
 pub fn add_to_linker<T: WasiSocketsView>(
