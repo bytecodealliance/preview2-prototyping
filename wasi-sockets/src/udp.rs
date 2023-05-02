@@ -3,14 +3,14 @@
 use crate::{
     udp_socket::TableUdpSocketExt,
     wasi::network::{Error, IpAddressFamily, Network},
-    wasi::poll::Pollable,
     wasi::udp::{self, Datagram, IpSocketAddress, UdpSocket},
     wasi::udp_create_socket,
-    WasiCtx,
+    WasiSocketsView,
 };
+use wasi_common::wasi::poll::Pollable;
 
 #[async_trait::async_trait]
-impl udp::Host for WasiCtx {
+impl<T: WasiSocketsView> udp::Host for T {
     async fn connect(
         &mut self,
         udp_socket: UdpSocket,
@@ -122,7 +122,8 @@ impl udp::Host for WasiCtx {
         this: UdpSocket,
         value: bool,
     ) -> anyhow::Result<Result<(), Error>> {
-        let this = self.table.get_udp_socket_mut(this)?;
+        let table = self.table_mut();
+        let this = table.get_udp_socket_mut(this)?;
         this.set_nonblocking(value)?;
         Ok(Ok(()))
     }
@@ -150,7 +151,7 @@ impl udp::Host for WasiCtx {
 }
 
 #[async_trait::async_trait]
-impl udp_create_socket::Host for WasiCtx {
+impl<T: WasiSocketsView> udp_create_socket::Host for T {
     async fn create_udp_socket(
         &mut self,
         address_family: IpAddressFamily,

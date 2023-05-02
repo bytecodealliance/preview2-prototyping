@@ -2,30 +2,31 @@
 
 use crate::{
     network::TableNetworkExt,
-    preview2::network::convert,
-    preview2::poll::PollableEntry,
+    network_impl::convert,
     tcp_socket::TableTcpSocketExt,
     wasi::network::{
         Error, IpAddressFamily, Ipv4Address, Ipv4SocketAddress, Ipv6Address, Ipv6SocketAddress,
         Network,
     },
-    wasi::poll::Pollable,
-    wasi::streams::{InputStream, OutputStream},
     wasi::tcp::{self, IpSocketAddress, ShutdownType, TcpSocket},
     wasi::tcp_create_socket,
-    WasiCtx, WasiTcpSocket,
+    WasiSocketsView, WasiTcpSocket,
 };
 use cap_net_ext::AddressFamily;
 use cap_std::net::{Ipv4Addr, Ipv6Addr, Shutdown, SocketAddr, SocketAddrV4, SocketAddrV6};
+use wasi_common::{
+    wasi::poll::Pollable,
+    wasi::streams::{InputStream, OutputStream},
+};
 
 #[async_trait::async_trait]
-impl tcp::Host for WasiCtx {
+impl<T: WasiSocketsView> tcp::Host for T {
     async fn listen(
         &mut self,
         socket: TcpSocket,
         network: Network,
     ) -> anyhow::Result<Result<(), Error>> {
-        let table = self.table_mut();
+        let table = self.table();
         let socket = table.get_tcp_socket(socket)?;
         let network = table.get_network(network)?;
 
@@ -101,7 +102,7 @@ impl tcp::Host for WasiCtx {
         network: Network,
         local_address: IpSocketAddress,
     ) -> anyhow::Result<Result<(), Error>> {
-        let table = self.table_mut();
+        let table = self.table();
         let socket = table.get_tcp_socket(this)?;
         let network = table.get_network(network)?;
 
@@ -115,7 +116,7 @@ impl tcp::Host for WasiCtx {
         this: TcpSocket,
         shutdown_type: ShutdownType,
     ) -> anyhow::Result<Result<(), Error>> {
-        let table = self.table_mut();
+        let table = self.table();
         let socket = table.get_tcp_socket(this)?;
 
         let how = match shutdown_type {
@@ -133,7 +134,7 @@ impl tcp::Host for WasiCtx {
         &mut self,
         this: TcpSocket,
     ) -> anyhow::Result<Result<IpSocketAddress, Error>> {
-        let table = self.table_mut();
+        let table = self.table();
         let socket = table.get_tcp_socket(this)?;
 
         let addr = socket.local_address()?;
@@ -145,7 +146,7 @@ impl tcp::Host for WasiCtx {
         &mut self,
         this: TcpSocket,
     ) -> anyhow::Result<Result<IpSocketAddress, Error>> {
-        let table = self.table_mut();
+        let table = self.table();
         let socket = table.get_tcp_socket(this)?;
 
         let addr = socket.remote_address()?;
@@ -166,7 +167,7 @@ impl tcp::Host for WasiCtx {
     }
 
     async fn no_delay(&mut self, this: TcpSocket) -> anyhow::Result<Result<bool, Error>> {
-        let table = self.table_mut();
+        let table = self.table();
         let socket = table.get_tcp_socket(this)?;
 
         let value = socket.nodelay()?;
@@ -179,7 +180,7 @@ impl tcp::Host for WasiCtx {
         this: TcpSocket,
         value: bool,
     ) -> anyhow::Result<Result<(), Error>> {
-        let table = self.table_mut();
+        let table = self.table();
         let socket = table.get_tcp_socket(this)?;
 
         socket.set_nodelay(value)?;
@@ -215,7 +216,7 @@ impl tcp::Host for WasiCtx {
     }
 
     async fn ipv6_only(&mut self, this: TcpSocket) -> anyhow::Result<Result<bool, Error>> {
-        let table = self.table_mut();
+        let table = self.table();
         let socket = table.get_tcp_socket(this)?;
 
         let value = socket.v6_only()?;
@@ -228,7 +229,7 @@ impl tcp::Host for WasiCtx {
         this: TcpSocket,
         value: bool,
     ) -> anyhow::Result<Result<(), Error>> {
-        let table = self.table_mut();
+        let table = self.table();
         let socket = table.get_tcp_socket(this)?;
 
         socket.set_v6_only(value)?;
@@ -249,9 +250,13 @@ impl tcp::Host for WasiCtx {
     }
 
     async fn subscribe(&mut self, this: TcpSocket) -> anyhow::Result<Pollable> {
+        todo!()
+        /* FIXME This needs a redesign of the wasi-common poll/sched interfaces to support creating
+         * pollables in other crates:
         Ok(self
             .table_mut()
             .push(Box::new(PollableEntry::TcpSocket(this)))?)
+        */
     }
 
     async fn drop_tcp_socket(&mut self, this: TcpSocket) -> anyhow::Result<()> {
@@ -264,12 +269,13 @@ impl tcp::Host for WasiCtx {
 }
 
 #[async_trait::async_trait]
-impl tcp_create_socket::Host for WasiCtx {
+impl<T: WasiSocketsView> tcp_create_socket::Host for T {
     async fn create_tcp_socket(
         &mut self,
         address_family: IpAddressFamily,
     ) -> anyhow::Result<Result<TcpSocket, Error>> {
-        let socket = (self.tcp_socket_creator)(address_family.into())?;
+        let ctx = self.ctx();
+        let socket = (ctx.tcp_socket_creator)(address_family.into())?;
         let table = self.table_mut();
         let socket = table.push(Box::new(socket)).map_err(convert)?;
         Ok(Ok(socket))
