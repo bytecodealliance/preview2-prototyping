@@ -8,6 +8,7 @@ members = [
     "verify",
     "host",
     "test-programs",
+    "test-programs/command-tests",
     "test-programs/wasi-tests",
     "test-programs/reactor-tests",
     "wasi-common",
