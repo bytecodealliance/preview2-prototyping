@@ -13,6 +13,7 @@ wasmtime::component::bindgen!({
     async: true,
     trappable_error_type: {
         "streams"::"stream-error": Error,
+        "network"::"error": NetError,
     },
     with: {
         "streams": wasi_common::wasi::streams,
