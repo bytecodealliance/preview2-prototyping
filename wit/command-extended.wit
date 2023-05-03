@@ -23,7 +23,7 @@ default world command-extended {
   import console: logging.handler
   import default-outgoing-HTTP: http.outgoing-handler
 
-  export main: func(
+  export run: func(
     args: list<string>,
   ) -> result
 }

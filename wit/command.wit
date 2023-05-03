@@ -17,5 +17,5 @@ default world command {
   import preopens: wasi-base.preopens
   import exit: wasi-base.exit
 
-  export main: func() -> result
+  export run: func() -> result
 }
