@@ -7,7 +7,7 @@ wasmtime::component::bindgen!({
       import wall-clock: clocks.wall-clock
       import monotonic-clock: clocks.monotonic-clock
       import timezone: clocks.timezone
-      import filesystem: filesystem.filesystem
+      import filesystem: filesystem.types
       import random: random.random
       import poll: poll.poll
       import streams: io.streams
