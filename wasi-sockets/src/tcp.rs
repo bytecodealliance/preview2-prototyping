@@ -2,7 +2,6 @@
 
 use crate::{
     network::TableNetworkExt,
-    network_impl::convert,
     tcp_socket::TableTcpSocketExt,
     wasi::network::{
         Error, IpAddressFamily, Ipv4Address, Ipv4SocketAddress, Ipv6Address, Ipv6SocketAddress,
@@ -44,9 +43,9 @@ impl<T: WasiSocketsView> tcp::Host for T {
 
         let (connection, input_stream, output_stream, _addr) = socket.accept(false).await?;
 
-        let connection = table.push(Box::new(connection)).map_err(convert)?;
-        let input_stream = table.push(Box::new(input_stream)).map_err(convert)?;
-        let output_stream = table.push(Box::new(output_stream)).map_err(convert)?;
+        let connection = table.push(Box::new(connection))?;
+        let input_stream = table.push(Box::new(input_stream))?;
+        let output_stream = table.push(Box::new(output_stream))?;
 
         Ok(Ok((connection, input_stream, output_stream)))
     }
@@ -63,8 +62,8 @@ impl<T: WasiSocketsView> tcp::Host for T {
 
         let (input_stream, output_stream) = socket.connect(network, remote_address.into()).await?;
 
-        let input_stream = table.push(Box::new(input_stream)).map_err(convert)?;
-        let output_stream = table.push(Box::new(output_stream)).map_err(convert)?;
+        let input_stream = table.push(Box::new(input_stream))?;
+        let output_stream = table.push(Box::new(output_stream))?;
 
         Ok(Ok((input_stream, output_stream)))
     }
@@ -277,7 +276,7 @@ impl<T: WasiSocketsView> tcp_create_socket::Host for T {
         let ctx = self.ctx();
         let socket = (ctx.tcp_socket_creator)(address_family.into())?;
         let table = self.table_mut();
-        let socket = table.push(Box::new(socket)).map_err(convert)?;
+        let socket = table.push(Box::new(socket))?;
         Ok(Ok(socket))
     }
 }

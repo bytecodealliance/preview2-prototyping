@@ -5,10 +5,6 @@ use crate::{
 };
 use cap_std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 
-pub(crate) fn convert(_error: wasi_common::Error) -> anyhow::Error {
-    todo!("convert wasi-common Error to wasi_network::Error")
-}
-
 #[async_trait::async_trait]
 impl<T: WasiSocketsView> network::Host for T {
     async fn drop_network(&mut self, this: Network) -> anyhow::Result<()> {
@@ -26,7 +22,7 @@ impl<T: WasiSocketsView> instance_network::Host for T {
         let ctx = self.ctx();
         let network = (ctx.network_creator)(ctx.pool.clone())?;
         let table = self.table_mut();
-        let network = table.push(Box::new(network)).map_err(convert)?;
+        let network = table.push(Box::new(network))?;
         Ok(network)
     }
 }
