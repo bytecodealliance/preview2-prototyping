@@ -13,7 +13,6 @@ default interface network {
 	drop-network: func(this: network)
 
 
-
 	enum error {
 		unknown,
 		again,

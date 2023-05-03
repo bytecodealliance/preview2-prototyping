@@ -15,3 +15,6 @@ tracing = { workspace = true }
 wasmtime = { workspace = true }
 wasi-common = { workspace = true }
 ipnet = { workspace = true }
+
+wasmtime-wit-bindgen = { path = "../../wasmtime/crates/wit-bindgen" }
+wit-parser = "0.7.0"

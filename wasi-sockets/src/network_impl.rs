@@ -11,6 +11,11 @@ pub(crate) fn convert(_error: wasi_common::Error) -> anyhow::Error {
 
 #[async_trait::async_trait]
 impl<T: WasiSocketsView> network::Host for T {
+    /*
+    async fn weird_trick(&mut self) -> anyhow::Result<Result<(), network::Error>> {
+        todo!()
+    }
+    */
     async fn drop_network(&mut self, this: Network) -> anyhow::Result<()> {
         let table = self.table_mut();
         if !table.delete::<Box<dyn WasiNetwork>>(this).is_ok() {
@@ -18,6 +23,12 @@ impl<T: WasiSocketsView> network::Host for T {
         }
         Ok(())
     }
+}
+
+#[test]
+fn bindgen_classified_as_error() {
+    fn assert_is_std_error<T: std::error::Error>(_: T) {}
+    assert_is_std_error(network::Error::Unknown);
 }
 
 #[async_trait::async_trait]
