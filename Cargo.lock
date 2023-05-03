@@ -187,7 +187,7 @@ checksum = "35df4f3b6aa0b18ee8f5001b7485158c031ae20abb1dabc1a74134a8e4531002"
 dependencies = [
  "cap-primitives",
  "cap-std",
- "rustix 0.37.9",
+ "rustix 0.37.13",
 ]
 
 [[package]]
@@ -202,7 +202,7 @@ dependencies = [
  "io-lifetimes",
  "ipnet",
  "maybe-owned",
- "rustix 0.37.9",
+ "rustix 0.37.13",
  "windows-sys 0.48.0",
  "winx",
 ]
@@ -226,7 +226,7 @@ dependencies = [
  "cap-primitives",
  "io-extras",
  "io-lifetimes",
- "rustix 0.37.9",
+ "rustix 0.37.13",
 ]
 
 [[package]]
@@ -237,7 +237,7 @@ checksum = "7a09fea46580f67fb8f6ba12ba5fe49a7efdeba5381d2f058d4920488edeb918"
 dependencies = [
  "cap-primitives",
  "once_cell",
- "rustix 0.37.9",
+ "rustix 0.37.13",
  "winx",
 ]
 
@@ -320,6 +320,16 @@ name = "clap_lex"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a2dd5a6fe8c6e3502f568a6353e5273bbb15193ad9a89e457b9970798efbea1"
+
+[[package]]
+name = "command-tests"
+version = "0.0.0"
+dependencies = [
+ "cap-std",
+ "getrandom",
+ "rustix 0.37.13",
+ "wit-bindgen",
+]
 
 [[package]]
 name = "concolor-override"
@@ -535,6 +545,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "dirs"
+version = "4.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca3aa72a6f96ea37bbc5aa912f6788242832f75369bdfdadcb0e38423f100059"
+dependencies = [
+ "dirs-sys",
+]
+
+[[package]]
+name = "dirs-sys"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b1d1d91c932ef41c0f2663aa8b0ca0342d444d842c06914aa0a7e352d0bada6"
+dependencies = [
+ "libc",
+ "redox_users",
+ "winapi",
+]
+
+[[package]]
 name = "dirs-sys-next"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -616,7 +646,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39ae6b3d9530211fb3b12a95374b8b0823be812f53d09e18c5675c0146b09642"
 dependencies = [
  "cfg-if",
- "rustix 0.37.9",
+ "rustix 0.37.13",
  "windows-sys 0.48.0",
 ]
 
@@ -652,7 +682,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7833d0f115a013d51c55950a3b09d30e4b057be9961b709acb9b5b17a1108861"
 dependencies = [
  "io-lifetimes",
- "rustix 0.37.9",
+ "rustix 0.37.13",
  "windows-sys 0.48.0",
 ]
 
@@ -747,7 +777,7 @@ dependencies = [
  "lazy_static",
  "tempfile",
  "test-log",
- "test-programs-macros",
+ "test-programs",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -846,7 +876,7 @@ checksum = "adcf93614601c8129ddf72e2d5633df827ba6551541c6d8c59520a371475be1f"
 dependencies = [
  "hermit-abi 0.3.1",
  "io-lifetimes",
- "rustix 0.37.9",
+ "rustix 0.37.13",
  "windows-sys 0.48.0",
 ]
 
@@ -920,9 +950,9 @@ checksum = "f051f77a7c8e6957c0696eac88f26b0117e54f52d3fc682ab19397a8812846a4"
 
 [[package]]
 name = "linux-raw-sys"
-version = "0.3.1"
+version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d59d8c75012853d2e872fb56bc8a2e53718e2cafe1a4c823143141c6d90c322f"
+checksum = "b64f40e5e03e0d54f03845c8197d0291253cdbedfb1cb46b13c2c117554a9f4c"
 
 [[package]]
 name = "lock_api"
@@ -979,7 +1009,7 @@ version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ffc89ccdc6e10d6907450f753537ebc5c5d3460d2e4e62ea74bd571db62c0f9e"
 dependencies = [
- "rustix 0.37.9",
+ "rustix 0.37.13",
 ]
 
 [[package]]
@@ -1256,9 +1286,9 @@ checksum = "d4a36c42d1873f9a77c53bde094f9664d9891bc604a45b4798fd2c389ed12e5b"
 
 [[package]]
 name = "rustix"
-version = "0.36.12"
+version = "0.36.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0af200a3324fa5bcd922e84e9b55a298ea9f431a489f01961acdebc6e908f25"
+checksum = "3a38f9520be93aba504e8ca974197f46158de5dcaa9fa04b57c57cd6a679d658"
 dependencies = [
  "bitflags",
  "errno",
@@ -1270,16 +1300,16 @@ dependencies = [
 
 [[package]]
 name = "rustix"
-version = "0.37.9"
+version = "0.37.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3eb76a3b09109e78c52d45979fea3cd8ddaadb223531d0846bedb60e72c3e99"
+checksum = "f79bef90eb6d984c72722595b5b1348ab39275a5e5123faca6863bf07d75a4e0"
 dependencies = [
  "bitflags",
  "errno",
  "io-lifetimes",
  "itoa",
  "libc",
- "linux-raw-sys 0.3.1",
+ "linux-raw-sys 0.3.6",
  "once_cell",
  "windows-sys 0.48.0",
 ]
@@ -1354,6 +1384,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "900fba806f70c630b0a382d0d825e17a0f19fcd059a2ade1ff237bcddf446b31"
 dependencies = [
  "lazy_static",
+]
+
+[[package]]
+name = "shellexpand"
+version = "2.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7ccc8076840c4da029af4f87e4e8daeb0fca6b87bbb02e10cb60b791450e11e4"
+dependencies = [
+ "dirs",
 ]
 
 [[package]]
@@ -1432,7 +1471,7 @@ dependencies = [
  "cap-std",
  "fd-lock",
  "io-lifetimes",
- "rustix 0.37.9",
+ "rustix 0.37.13",
  "windows-sys 0.48.0",
  "winx",
 ]
@@ -1452,7 +1491,7 @@ dependencies = [
  "cfg-if",
  "fastrand",
  "redox_syscall 0.3.5",
- "rustix 0.37.9",
+ "rustix 0.37.13",
  "windows-sys 0.45.0",
 ]
 
@@ -1478,16 +1517,6 @@ dependencies = [
 
 [[package]]
 name = "test-programs"
-version = "0.0.0"
-dependencies = [
- "cap-std",
- "getrandom",
- "rustix 0.37.9",
- "wit-bindgen",
-]
-
-[[package]]
-name = "test-programs-macros"
 version = "0.0.0"
 dependencies = [
  "cargo_metadata",
@@ -1737,7 +1766,7 @@ dependencies = [
  "ipnet",
  "is-terminal",
  "once_cell",
- "rustix 0.37.9",
+ "rustix 0.37.13",
  "system-interface",
  "tempfile",
  "tracing",
@@ -1756,11 +1785,12 @@ dependencies = [
  "cap-rand",
  "cap-std",
  "io-extras",
- "rustix 0.37.9",
+ "rustix 0.37.13",
  "system-interface",
  "thiserror",
  "tracing",
  "wasmtime",
+ "wiggle",
  "windows-sys 0.48.0",
 ]
 
@@ -1937,7 +1967,7 @@ dependencies = [
  "directories-next",
  "file-per-thread-logger",
  "log",
- "rustix 0.36.12",
+ "rustix 0.36.13",
  "serde",
  "sha2",
  "toml",
@@ -2029,7 +2059,7 @@ source = "git+https://github.com/bytecodealliance/wasmtime?rev=299131ae2d6655c49
 dependencies = [
  "cc",
  "cfg-if",
- "rustix 0.36.12",
+ "rustix 0.36.13",
  "wasmtime-asm-macros",
  "windows-sys 0.45.0",
 ]
@@ -2065,7 +2095,7 @@ source = "git+https://github.com/bytecodealliance/wasmtime?rev=299131ae2d6655c49
 dependencies = [
  "object",
  "once_cell",
- "rustix 0.36.12",
+ "rustix 0.36.13",
 ]
 
 [[package]]
@@ -2095,7 +2125,7 @@ dependencies = [
  "memoffset",
  "paste",
  "rand",
- "rustix 0.36.12",
+ "rustix 0.36.13",
  "wasmtime-asm-macros",
  "wasmtime-environ",
  "wasmtime-fiber",
@@ -2124,7 +2154,7 @@ dependencies = [
  "cap-net-ext",
  "cap-std",
  "ipnet",
- "rustix 0.37.9",
+ "rustix 0.37.13",
  "tracing",
  "wasi-common",
  "wasmtime",
@@ -2147,7 +2177,7 @@ dependencies = [
  "ipnet",
  "is-terminal",
  "once_cell",
- "rustix 0.37.9",
+ "rustix 0.37.13",
  "system-interface",
  "tracing",
  "wasi-common",
@@ -2184,6 +2214,15 @@ dependencies = [
 
 [[package]]
 name = "wast"
+version = "35.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ef140f1b49946586078353a453a1d28ba90adfc54dde75710bc1931de204d68"
+dependencies = [
+ "leb128",
+]
+
+[[package]]
+name = "wast"
 version = "56.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6b54185c051d7bbe23757d50fe575880a2426a2f06d2e9f6a10fd9a4a42920c0"
@@ -2200,7 +2239,47 @@ version = "1.0.62"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56681922808216ab86d96bb750f70d500b5a7800e41564290fd46bb773581299"
 dependencies = [
- "wast",
+ "wast 56.0.0",
+]
+
+[[package]]
+name = "wiggle"
+version = "9.0.0"
+source = "git+https://github.com/bytecodealliance/wasmtime?rev=299131ae2d6655c49138bfab2c4469650763ef3b#299131ae2d6655c49138bfab2c4469650763ef3b"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bitflags",
+ "thiserror",
+ "tracing",
+ "wasmtime",
+ "wiggle-macro",
+ "witx",
+]
+
+[[package]]
+name = "wiggle-generate"
+version = "9.0.0"
+source = "git+https://github.com/bytecodealliance/wasmtime?rev=299131ae2d6655c49138bfab2c4469650763ef3b#299131ae2d6655c49138bfab2c4469650763ef3b"
+dependencies = [
+ "anyhow",
+ "heck",
+ "proc-macro2",
+ "quote",
+ "shellexpand",
+ "syn 1.0.109",
+ "witx",
+]
+
+[[package]]
+name = "wiggle-macro"
+version = "9.0.0"
+source = "git+https://github.com/bytecodealliance/wasmtime?rev=299131ae2d6655c49138bfab2c4469650763ef3b#299131ae2d6655c49138bfab2c4469650763ef3b"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+ "wiggle-generate",
 ]
 
 [[package]]
@@ -2534,6 +2613,17 @@ dependencies = [
  "pulldown-cmark",
  "unicode-xid",
  "url",
+]
+
+[[package]]
+name = "witx"
+version = "0.9.1"
+source = "git+https://github.com/bytecodealliance/wasmtime?rev=299131ae2d6655c49138bfab2c4469650763ef3b#299131ae2d6655c49138bfab2c4469650763ef3b"
+dependencies = [
+ "anyhow",
+ "log",
+ "thiserror",
+ "wast 35.0.2",
 ]
 
 [[package]]
