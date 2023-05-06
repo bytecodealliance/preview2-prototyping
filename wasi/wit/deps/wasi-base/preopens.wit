@@ -1,5 +1,5 @@
 default interface preopens {
-  use filesystem.filesystem.{descriptor}
+  use filesystem.types.{descriptor}
   use io.streams.{input-stream, output-stream}
 
   /// Stdio preopens: these are the resources that provide stdin, stdout, and

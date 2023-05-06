@@ -2,7 +2,7 @@ default world command-extended {
   import wall-clock: clocks.wall-clock
   import monotonic-clock: clocks.monotonic-clock
   import timezone: clocks.timezone
-  import filesystem: filesystem.filesystem
+  import filesystem: filesystem.types
   import instance-network: sockets.instance-network
   import ip-name-lookup: sockets.ip-name-lookup
   import network: sockets.network
