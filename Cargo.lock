@@ -1781,6 +1781,7 @@ dependencies = [
  "cap-fs-ext",
  "cap-rand",
  "cap-std",
+ "cap-time-ext",
  "fs-set-times",
  "io-extras",
  "rustix 0.37.13",
