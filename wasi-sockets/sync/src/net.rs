@@ -13,7 +13,6 @@ use std::io::{self, Read, Write};
 use std::sync::Arc;
 use system_interface::io::{IoExt, IsReadWrite, ReadReady};
 use wasi_common::stream::{InputStream, OutputStream};
-use wasi_common::ErrorExt;
 use wasmtime_wasi_sockets::{RiFlags, RoFlags, WasiNetwork, WasiTcpSocket, WasiUdpSocket};
 
 pub struct Network(Pool);
@@ -269,7 +268,7 @@ impl InputStream for TcpSocket {
         Some(BorrowedHandleOrSocket::from_socket(self.as_socket()))
     }
 
-    async fn read(&mut self, buf: &mut [u8]) -> Result<(u64, bool), wasi_common::Error> {
+    async fn read(&mut self, buf: &mut [u8]) -> Result<(u64, bool), anyhow::Error> {
         match Read::read(&mut &*self.as_socketlike_view::<TcpStream>(), buf) {
             Ok(0) => Ok((0, true)),
             Ok(n) => Ok((n as u64, false)),
@@ -280,7 +279,7 @@ impl InputStream for TcpSocket {
     async fn read_vectored<'a>(
         &mut self,
         bufs: &mut [io::IoSliceMut<'a>],
-    ) -> Result<(u64, bool), wasi_common::Error> {
+    ) -> Result<(u64, bool), anyhow::Error> {
         match Read::read_vectored(&mut &*self.as_socketlike_view::<TcpStream>(), bufs) {
             Ok(0) => Ok((0, true)),
             Ok(n) => Ok((n as u64, false)),
@@ -293,7 +292,7 @@ impl InputStream for TcpSocket {
         Read::is_read_vectored(&mut &*self.as_socketlike_view::<TcpStream>())
     }
 
-    async fn skip(&mut self, nelem: u64) -> Result<(u64, bool), wasi_common::Error> {
+    async fn skip(&mut self, nelem: u64) -> Result<(u64, bool), anyhow::Error> {
         let num = io::copy(
             &mut io::Read::take(&*self.as_socketlike_view::<TcpStream>(), nelem),
             &mut io::sink(),
@@ -301,16 +300,16 @@ impl InputStream for TcpSocket {
         Ok((num, num < nelem))
     }
 
-    async fn num_ready_bytes(&self) -> Result<u64, wasi_common::Error> {
+    async fn num_ready_bytes(&self) -> Result<u64, anyhow::Error> {
         let val = self.as_socketlike_view::<TcpStream>().num_ready_bytes()?;
         Ok(val)
     }
 
-    async fn readable(&self) -> Result<(), wasi_common::Error> {
+    async fn readable(&self) -> Result<(), anyhow::Error> {
         if is_read_write(&*self.as_socketlike_view::<TcpStream>())?.0 {
             Ok(())
         } else {
-            Err(wasi_common::Error::badf())
+            Err(anyhow::anyhow!("badf"))
         }
     }
 }
@@ -331,14 +330,11 @@ impl OutputStream for TcpSocket {
         Some(BorrowedHandleOrSocket::from_socket(self.as_socket()))
     }
 
-    async fn write(&mut self, buf: &[u8]) -> Result<u64, wasi_common::Error> {
+    async fn write(&mut self, buf: &[u8]) -> Result<u64, anyhow::Error> {
         let n = Write::write(&mut &*self.as_socketlike_view::<TcpStream>(), buf)?;
         Ok(n.try_into()?)
     }
-    async fn write_vectored<'a>(
-        &mut self,
-        bufs: &[io::IoSlice<'a>],
-    ) -> Result<u64, wasi_common::Error> {
+    async fn write_vectored<'a>(&mut self, bufs: &[io::IoSlice<'a>]) -> Result<u64, anyhow::Error> {
         let n = Write::write_vectored(&mut &*self.as_socketlike_view::<TcpStream>(), bufs)?;
         Ok(n.try_into()?)
     }
@@ -350,7 +346,7 @@ impl OutputStream for TcpSocket {
         &mut self,
         src: &mut dyn InputStream,
         nelem: u64,
-    ) -> Result<(u64, bool), wasi_common::Error> {
+    ) -> Result<(u64, bool), anyhow::Error> {
         if let Some(readable) = src.pollable_read() {
             let num = io::copy(
                 &mut io::Read::take(BorrowedReadable::borrow(readable), nelem),
@@ -361,18 +357,18 @@ impl OutputStream for TcpSocket {
             OutputStream::splice(self, src, nelem).await
         }
     }
-    async fn write_zeroes(&mut self, nelem: u64) -> Result<u64, wasi_common::Error> {
+    async fn write_zeroes(&mut self, nelem: u64) -> Result<u64, anyhow::Error> {
         let num = io::copy(
             &mut io::Read::take(io::repeat(0), nelem),
             &mut &*self.as_socketlike_view::<TcpStream>(),
         )?;
         Ok(num)
     }
-    async fn writable(&self) -> Result<(), wasi_common::Error> {
+    async fn writable(&self) -> Result<(), anyhow::Error> {
         if is_read_write(&*self.as_socketlike_view::<TcpStream>())?.1 {
             Ok(())
         } else {
-            Err(wasi_common::Error::badf())
+            Err(anyhow::anyhow!("badf"))
         }
     }
 }

@@ -783,6 +783,8 @@ dependencies = [
  "tracing-subscriber",
  "wasi-common",
  "wasmtime",
+ "wasmtime-wasi-sockets",
+ "wasmtime-wasi-sockets-sync",
 ]
 
 [[package]]
