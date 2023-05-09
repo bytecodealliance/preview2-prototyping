@@ -43,12 +43,8 @@ fn main() {
     println!("cargo:rerun-if-changed=./command-tests");
     println!("cargo:rerun-if-changed=./reactor-tests");
 
-    // wasi-tests and command-tests need require nightly for a feature in the `io-extras` crate:
-    let mut cmd = Command::new("rustup");
-    cmd.arg("run")
-        .arg("nightly-2023-03-14")
-        .arg("cargo")
-        .arg("build")
+    let mut cmd = Command::new("cargo");
+    cmd.arg("build")
         .arg("--target=wasm32-wasi")
         .arg("--package=wasi-tests")
         .arg("--package=command-tests")
@@ -58,12 +54,8 @@ fn main() {
     let status = cmd.status().unwrap();
     assert!(status.success());
 
-    // reactor-tests can build on stable:
-    let mut cmd = Command::new("rustup");
-    cmd.arg("run")
-        .arg("stable")
-        .arg("cargo")
-        .arg("build")
+    let mut cmd = Command::new("cargo");
+    cmd.arg("build")
         .arg("--target=wasm32-wasi")
         .arg("--package=reactor-tests")
         .env("CARGO_TARGET_DIR", &out_dir)

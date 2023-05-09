@@ -1,0 +1,8 @@
+[toolchain]
+# TODO: Remove pin to 2023-03-14 once rust-lang/rust#109199 is released.
+channel = "nightly-2023-03-14" # wasi-tests and command-tests require nightly for a feature in the `io-extras` crate
+components = ["clippy", "rustfmt"]
+targets = [
+    "wasm32-unknown-unknown",
+    "wasm32-wasi"
+]
