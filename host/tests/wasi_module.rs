@@ -120,7 +120,6 @@ async fn clock_time_get() {
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
 async fn close_preopen() {
     run_with_temp_dir("close_preopen").await
 }
@@ -252,13 +251,11 @@ async fn path_open_create_existing() {
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
 async fn path_open_dirfd_not_dir() {
     run_with_temp_dir("path_open_dirfd_not_dir").await
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
 async fn path_open_missing() {
     run_with_temp_dir("path_open_missing").await
 }
@@ -321,7 +318,6 @@ async fn remove_nonempty_directory() {
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
 async fn renumber() {
     run_with_temp_dir("renumber").await
 }
@@ -332,7 +328,6 @@ async fn sched_yield() {
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
 async fn stdio() {
     run_with_temp_dir("stdio").await
 }
