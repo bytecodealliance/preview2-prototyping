@@ -12,7 +12,6 @@ members = [
     "test-programs/wasi-tests",
     "test-programs/reactor-tests",
     "wasi-common",
-    "wasi-common/cap-std-sync",
     "wasi-sockets",
     "wasi-sockets/sync",
     "byte-array",
@@ -32,13 +31,14 @@ cap-std = "1.0.12"
 cap-rand = "1.0.12"
 cap-fs-ext = "1.0.12"
 cap-net-ext = "1.0.12"
+fs-set-times = "0.19.0"
+cap-time-ext = "1.0.0"
 bitflags = "1.2"
 windows-sys = "0.48.0"
 rustix = "0.37.9"
 async-trait = "0.1.59"
 io-lifetimes = { version = "1.0.0", default-features = false }
 wasi-common = { path = "wasi-common" }
-wasi-cap-std-sync = { path = "wasi-common/cap-std-sync" }
 wasmtime-wasi-sockets = { path = "wasi-sockets" }
 wasmtime-wasi-sockets-sync = { path = "wasi-sockets/sync" }
 once_cell = "1.12.0"
