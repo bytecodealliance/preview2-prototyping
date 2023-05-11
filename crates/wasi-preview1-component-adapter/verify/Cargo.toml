@@ -1,7 +1,9 @@
 [package]
-name = "verify"
-version = "0.1.0"
-edition = "2021"
+name = "verify-component-adapter"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+publish = false
 
 [dependencies]
 wasmparser = "0.92.0"

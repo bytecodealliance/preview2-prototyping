@@ -263,8 +263,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "verify"
-version = "0.1.0"
+name = "verify-component-adapter"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "wasmparser 0.92.0",

@@ -2,6 +2,28 @@ use anyhow::{bail, Result};
 use std::env;
 use wasmparser::*;
 
+const ALLOWED_IMPORT_MODULES: &[&str] = &[
+    "wall-clock",
+    "monotonic-clock",
+    "timezone",
+    "filesystem",
+    "instance-network",
+    "ip-name-lookup",
+    "network",
+    "tcp-create-socket",
+    "tcp",
+    "udp-create-socket",
+    "udp",
+    "random",
+    "poll",
+    "streams",
+    "environment",
+    "preopens",
+    "exit",
+    "canonical_abi",
+    "__main_module__",
+];
+
 fn main() -> Result<()> {
     let file = env::args()
         .nth(1)
@@ -25,32 +47,7 @@ fn main() -> Result<()> {
                     let i = i?;
                     match i.ty {
                         TypeRef::Func(_) => {
-                            if i.module != "wall-clock"
-                                && i.module != "monotonic-clock"
-                                && i.module != "instance-wall-clock"
-                                && i.module != "instance-monotonic-clock"
-                                && i.module != "timezone"
-                                && i.module != "filesystem"
-                                && i.module != "instance-network"
-                                && i.module != "ip-name-lookup"
-                                && i.module != "network"
-                                && i.module != "tcp-create-socket"
-                                && i.module != "tcp"
-                                && i.module != "udp-create-socket"
-                                && i.module != "udp"
-                                && i.module != "random"
-                                && i.module != "poll"
-                                && i.module != "streams"
-                                && i.module != "environment"
-                                && i.module != "preopens"
-                                && i.module != "exit"
-                                && i.module != "stderr"
-                                && i.module != "types"
-                                && i.module != "default-outgoing-HTTP"
-                                && i.module != "HTTP"
-                                && i.module != "canonical_abi"
-                                && i.module != "__main_module__"
-                            {
+                            if !ALLOWED_IMPORT_MODULES.contains(&i.module) {
                                 bail!("import from unknown module `{}`", i.module);
                             }
                         }
