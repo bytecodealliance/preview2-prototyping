@@ -48,6 +48,13 @@ jobs:
         git diff --exit-code
       working-directory: ./crates/wasi-preview1-component-adapter
 
+    - name: Check reactor-tests crate
+      run: |
+        wit-deps lock
+        git add -N wit/deps
+        git diff --exit-code
+      working-directory: ./test-programs/reactor-tests
+
   test:
     name: Test
     runs-on: ${{ matrix.os }}
