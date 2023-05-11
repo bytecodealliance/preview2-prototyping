@@ -143,10 +143,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d261e256854913907f67ed06efbc3338dfe6179796deefc1ff763fc1aee5535"
 
 [[package]]
-name = "byte-array"
-version = "0.0.0"
-
-[[package]]
 name = "byteorder"
 version = "1.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1729,15 +1725,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "711b9620af191e0cdc7468a8d14e709c3dcdb115b36f838e601583af800a370a"
 
 [[package]]
-name = "verify"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "wasmparser 0.92.0",
- "wat",
-]
-
-[[package]]
 name = "version_check"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1830,15 +1817,6 @@ dependencies = [
  "serde",
  "wasm-encoder 0.25.0 (git+https://github.com/bytecodealliance/wasm-tools?rev=b17fc48a23152735bafd8f7ee95e3b55683d9511)",
  "wasmparser 0.102.0 (git+https://github.com/bytecodealliance/wasm-tools?rev=b17fc48a23152735bafd8f7ee95e3b55683d9511)",
-]
-
-[[package]]
-name = "wasmparser"
-version = "0.92.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7da34cec2a8c23db906cdf8b26e988d7a7f0d549eb5d51299129647af61a1b37"
-dependencies = [
- "indexmap",
 ]
 
 [[package]]
