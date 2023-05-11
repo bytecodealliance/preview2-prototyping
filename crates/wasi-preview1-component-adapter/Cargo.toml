@@ -7,7 +7,7 @@ edition.workspace = true
 [dependencies]
 wasi = { version = "0.11.0", default-features = false }
 wit-bindgen = { version = "0.4.0", default-features = false, features = ["macros"] }
-byte-array = { workspace = true }
+byte-array-literals = { workspace = true }
 
 [build-dependencies]
 wasm-encoder = "0.25"
@@ -46,7 +46,7 @@ command = []
 [workspace]
 members = [
     "verify",
-    "byte-array"
+    "byte-array-literals"
 ]
 
 [workspace.package]
@@ -55,4 +55,4 @@ edition = "2021"
 authors = ["The Wasmtime Project Developers"]
 
 [workspace.dependencies]
-byte-array = { path = "byte-array" }
+byte-array-literals = { path = "byte-array-literals" }
