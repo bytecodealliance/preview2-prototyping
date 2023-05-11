@@ -50,6 +50,16 @@ impl Table {
         }
     }
 
+    /// Insert a resource at the selected index, if a resource was already present under the key,
+    /// it is returned.
+    pub fn insert(
+        &mut self,
+        key: u32,
+        a: Box<dyn Any + Send + Sync>,
+    ) -> Result<Option<Box<dyn Any + Send + Sync>>, TableError> {
+        Ok(self.map.insert(key, a))
+    }
+
     /// Check if the table has a resource at the given index.
     pub fn contains_key(&self, key: u32) -> bool {
         self.map.contains_key(&key)

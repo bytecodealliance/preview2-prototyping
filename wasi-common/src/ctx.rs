@@ -106,14 +106,14 @@ impl WasiCtxBuilder {
     pub fn build(self, table: &mut Table) -> Result<WasiCtx, anyhow::Error> {
         use anyhow::Context;
 
-        let stdin = table
-            .push_input_stream(self.stdin.context("required member stdin")?)
+        table
+            .set_stdin(self.stdin.context("required member stdin")?)
             .context("stdin")?;
-        let stdout = table
-            .push_output_stream(self.stdout.context("required member stdout")?)
+        table
+            .set_stdout(self.stdout.context("required member stdout")?)
             .context("stdout")?;
-        let stderr = table
-            .push_output_stream(self.stderr.context("required member stderr")?)
+        table
+            .set_stderr(self.stderr.context("required member stderr")?)
             .context("stderr")?;
 
         let mut preopens = Vec::new();
@@ -131,9 +131,9 @@ impl WasiCtxBuilder {
             env: self.env,
             args: self.args,
             preopens,
-            stdin,
-            stdout,
-            stderr,
+            stdin: 0,
+            stdout: 1,
+            stderr: 2,
         })
     }
 }
