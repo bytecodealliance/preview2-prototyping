@@ -133,5 +133,5 @@ jobs:
         prerelease: true
         title: "Latest Build"
         files: |
-          wasi_preview1_component_adapter.reactor.wasm
-          wasi_preview1_component_adapter.command.wasm
+          crates/wasi-preview1-component-adapter/wasi_preview1_component_adapter.reactor.wasm
+          crates/wasi-preview1-component-adapter/wasi_preview1_component_adapter.command.wasm
