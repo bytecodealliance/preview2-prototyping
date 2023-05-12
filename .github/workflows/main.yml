@@ -25,7 +25,7 @@ jobs:
 
   wit-dep-check:
     name: Check wit-deps
-    runs-on: ununtu-latest
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
     - name: Install wit-deps
