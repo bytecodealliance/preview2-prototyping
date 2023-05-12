@@ -113,7 +113,7 @@ jobs:
     - uses: actions/upload-artifact@v3
       with:
         name: wasi_preview1_component_adapter.command.wasm
-        path: wasi_preview1_component_adapter.command.wasm
+        path: crates/wasi-preview1-component-adapter/wasi_preview1_component_adapter.command.wasm
 
     # Release build, default features (reactor)
     - run: cargo build --target wasm32-unknown-unknown --release
@@ -122,7 +122,7 @@ jobs:
     - uses: actions/upload-artifact@v3
       with:
         name: wasi_preview1_component_adapter.reactor.wasm
-        path: wasi_preview1_component_adapter.reactor.wasm
+        path: crates/wasi-preview1-component-adapter/wasi_preview1_component_adapter.reactor.wasm
 
 
     - uses: marvinpinto/action-automatic-releases@latest
