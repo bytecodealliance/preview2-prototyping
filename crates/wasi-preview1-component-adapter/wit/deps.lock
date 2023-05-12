@@ -24,9 +24,9 @@ sha512 = "f65965395742a0290fd9e4e55408c2b5ce3a4eae0ee22be1ff012e3db75910110da21c
 
 [preview]
 path = "../../../wit"
-sha256 = "801ac6f9d454b62b8058fa107dfe0a6925e7043b325dfad3926891c610f10ca6"
-sha512 = "4fc48e0c92fe95d4a483ebbdd4e2e1c0d348e03720b611c58bf422ba2a27f4c1b72c4b267ddb1d7575f9f10256b08d33e6fe6b0acf43646a10b577d8290cf6ea"
-deps = ["clocks", "filesystem", "http", "io", "logging", "poll", "random", "sockets", "wasi-base"]
+sha256 = "007d4902193faef77b2df60714a8dfe8ec243e030c1ce61fb11c52788e3a5fe0"
+sha512 = "bd06e8338e7fad0fc2e56ae01c5b184282c66ca79d2040eaec5a11efb14a4002b2a6234baaf354aff3cd57dc99835e4979eb71cdbd5d12800ea289d9a13252f2"
+deps = ["clocks", "filesystem", "http", "io", "logging", "poll", "random", "sockets", "wasi-cli-base"]
 
 [random]
 sha256 = "19d57f2262530016ec2b32991db3d8b6705b3a0bc5a7b6ae8fff3bcef0cf1088"
@@ -36,6 +36,6 @@ sha512 = "f9eba7dfd858d1edcaa868ce636f69545323bf010c3b0d4a2a1b23584d8027240c592d
 sha256 = "d5a51604d53eec88d2735356ce7089a0eeb06886262e7ad2fc74be6b4dd943b2"
 sha512 = "99bd86c0c59174bc9dafc559ca7dbab1aa9ed04a9b54ae3f7bb2d974b3a97bae8846acf1d77232edecda0aef5b23b9e4010d53ebf4a1d04292581078763530b7"
 
-[wasi-base]
+[wasi-cli-base]
 sha256 = "a0beee69392d2b55baff0b5f2285f50f717473b1369bdb3fbbfbefbaa3bd6c86"
 sha512 = "d80eada98646bfeec1066437f1a4f69d67d117f38407f35c48d8b31667c171656059c5abf638c5b31169119ef5fa73bbf199933ac198f815f58281f124cb4f8d"
