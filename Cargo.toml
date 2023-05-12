@@ -1,11 +1,5 @@
-[package]
-name = "wasi_snapshot_preview1"
-version.workspace = true
-edition.workspace = true
-
 [workspace]
 members = [
-    "verify",
     "host",
     "test-programs",
     "test-programs/command-tests",
@@ -14,7 +8,6 @@ members = [
     "wasi-common",
     "wasi-sockets",
     "wasi-sockets/sync",
-    "byte-array",
     "wasi"
 ]
 
@@ -47,44 +40,4 @@ wit-bindgen = { version = "0.4.0", default-features = false }
 ipnet = "2" # TODO: Move to cap_std::ipnet instead, when that's released.
 wasmtime = { git = "https://github.com/bytecodealliance/wasmtime", rev = "299131ae2d6655c49138bfab2c4469650763ef3b", features = ["component-model"] }
 wiggle = { git = "https://github.com/bytecodealliance/wasmtime", rev = "299131ae2d6655c49138bfab2c4469650763ef3b" }
-
-[dependencies]
-wasi = { version = "0.11.0", default-features = false }
-wit-bindgen = { workspace = true, features = ["macros"] }
-byte-array = { path = "byte-array" }
-
-[build-dependencies]
-wasm-encoder = "0.25"
-object = { version = "0.30.0", default-features = false, features = ["archive"] }
-
-[lib]
-crate-type = ["cdylib"]
-
-[profile.release]
-# Omit any unwinding support. This is currently the default for wasm, though
-# that could theoretically change in the future.
-panic = 'abort'
-
-[profile.release.package.wasi_snapshot_preview1]
-opt-level = 's'
-strip = 'debuginfo'
-
-# Make dev look like a release build since this adapter module won't work with
-# a debug build that uses data segments and such.
-[profile.dev.package.wasi_snapshot_preview1]
-incremental = false
-opt-level = 's'
-
-# Omit assertions, which include failure messages which require string
-# initializers.
-debug-assertions = false
-
-# Omit integer overflow checks, which include failure messages which require
-# string initializers.
-overflow-checks = false
-
-[features]
-default = ["reactor"]
-reactor = []
-command = []
 

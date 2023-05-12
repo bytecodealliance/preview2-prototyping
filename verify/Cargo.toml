@@ -1,9 +1,0 @@
-[package]
-name = "verify"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-wasmparser = "0.92.0"
-wat = "1.0.62"
-anyhow = "1"
