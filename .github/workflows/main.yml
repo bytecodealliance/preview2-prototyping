@@ -74,7 +74,6 @@ jobs:
       # (expected in 1.71)
       # TODO: Also remove it in test-programs/build.rs
     - run: rustup update nightly-2023-03-14
-    - run: rustup default nightly-2023-03-14
     - run: rustup target add --toolchain=stable wasm32-wasi wasm32-unknown-unknown
     - run: rustup target add --toolchain=nightly-2023-03-14 wasm32-wasi wasm32-unknown-unknown
     - name: Run test suite
