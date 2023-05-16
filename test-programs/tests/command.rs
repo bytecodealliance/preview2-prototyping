@@ -29,7 +29,7 @@ lazy_static::lazy_static! {
     };
 }
 // uses ENGINE, creates a fn get_component(&str) -> Component
-test_programs::command_tests_components!();
+include!(concat!(env!("OUT_DIR"), "/command_tests_components.rs"));
 
 struct CommandCtx {
     table: Table,

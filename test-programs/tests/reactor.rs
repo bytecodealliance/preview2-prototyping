@@ -19,7 +19,7 @@ lazy_static::lazy_static! {
 }
 
 // uses ENGINE, creates a fn get_component(&str) -> Component
-test_programs::reactor_tests_components!();
+include!(concat!(env!("OUT_DIR"), "/reactor_tests_components.rs"));
 
 wasmtime::component::bindgen!({
     path: "../test-programs/reactor-tests/wit",

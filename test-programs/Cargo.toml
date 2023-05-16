@@ -5,14 +5,25 @@ edition = "2021"
 publish = false
 
 [lib]
-proc-macro = true
-doctest = false
-test = false
-
-[dependencies]
-quote = "1.0"
 
 [build-dependencies]
 wit-component = { git = "https://github.com/bytecodealliance/wasm-tools", rev = "b17fc48a23152735bafd8f7ee95e3b55683d9511" }
 cargo_metadata = "0.15.3"
 heck = "0.4.0"
+
+[dev-dependencies]
+anyhow = { workspace = true }
+cap-std = { workspace = true }
+wasmtime = { workspace = true }
+wasi-common = { workspace = true }
+wasmtime-wasi-sockets = { workspace = true }
+wasmtime-wasi-sockets-sync = { workspace = true }
+
+tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt" ]}
+tokio = { version = "1", features = ["full"] }
+tracing = { workspace = true }
+cap-rand = { workspace = true }
+test-log = { version = "0.2", default-features = false, features = ["trace"] }
+tempfile = "3.3.0"
+lazy_static = "1"
+

@@ -105,14 +105,37 @@ fn main() {
         .map(|stem| compile_component(stem, &out_dir, &reactor_adapter))
         .collect::<Vec<_>>();
 
-    let src = format!(
-        "const COMMAND_TESTS_COMPONENTS: &[(&str, &str)] = &{command_tests:?};
+    {
+        let src = format!(
+            "const COMMAND_TESTS_COMPONENTS: &[(&str, &str)] = &{command_tests:?};
          const WASI_TESTS_MODULES: &[(&str, &str)] = &{wasi_tests_modules:?};
          const WASI_TESTS_COMPONENTS: &[(&str, &str)] = &{wasi_tests_components:?};
          const REACTOR_TESTS_COMPONENTS: &[(&str, &str)] = &{reactor_tests:?};
         ",
-    );
-    std::fs::write(out_dir.join("components.rs"), src).unwrap();
+        );
+        std::fs::write(out_dir.join("components.rs"), src).unwrap();
+    }
+
+    std::fs::write(
+        out_dir.join("command_tests_components.rs"),
+        compiled_components(&command_tests),
+    )
+    .unwrap();
+    std::fs::write(
+        out_dir.join("wasi_tests_components.rs"),
+        compiled_components(&wasi_tests_components),
+    )
+    .unwrap();
+    std::fs::write(
+        out_dir.join("wasi_tests_modules.rs"),
+        compiled_modules(&wasi_tests_modules),
+    )
+    .unwrap();
+    std::fs::write(
+        out_dir.join("reactor_tests_components.rs"),
+        compiled_components(&reactor_tests),
+    )
+    .unwrap();
 }
 
 fn compile_component(stem: String, out_dir: &PathBuf, adapter: &[u8]) -> (String, String) {
@@ -159,4 +182,62 @@ fn targets_in_package<'a>(
         panic!("no targets for package {package:?} of kind {kind:?}")
     }
     targets
+}
+
+fn compiled_components(components: &[(String, String)]) -> String {
+    let mut decls = String::new();
+    let mut cases = String::new();
+    for (stem, file) in components {
+        let global = format!("{}_COMPONENT", stem.to_uppercase());
+        decls += &format!(
+            "
+            lazy_static::lazy_static!{{
+                static ref {global}: wasmtime::component::Component = {{
+                    wasmtime::component::Component::from_file(&ENGINE, \"{file}\").unwrap()
+                }};
+            }}
+        "
+        );
+        cases += &format!("{stem:?} => {global}.clone(),");
+    }
+    format!(
+        "
+        {decls}\n
+        fn get_component(s: &str) -> wasmtime::component::Component {{
+            match s {{
+                {cases}
+                _ => panic!(\"no such component: {{}}\", s),
+            }}
+        }}
+        "
+    )
+}
+
+fn compiled_modules(components: &[(String, String)]) -> String {
+    let mut decls = String::new();
+    let mut cases = String::new();
+    for (stem, file) in components {
+        let global = format!("{}_MODULE", stem.to_uppercase());
+        decls += &format!(
+            "
+            lazy_static::lazy_static!{{
+                static ref {global}: wasmtime::Module = {{
+                    wasmtime::Module::from_file(&ENGINE, \"{file}\").unwrap()
+                }};
+            }}
+        "
+        );
+        cases += &format!("{stem:?} => {global}.clone(),");
+    }
+    format!(
+        "
+        {decls}\n
+        fn get_module(s: &str) -> wasmtime::Module {{
+            match s {{
+                {cases}
+                _ => panic!(\"no such module: {{}}\", s),
+            }}
+        }}
+        "
+    )
 }
