@@ -187,7 +187,7 @@ fn compiled_components(components: &[(String, String)]) -> String {
             "
             lazy_static::lazy_static!{{
                 static ref {global}: wasmtime::component::Component = {{
-                    wasmtime::component::Component::from_file(&ENGINE, \"{file}\").unwrap()
+                    wasmtime::component::Component::from_file(&ENGINE, {file:?}).unwrap()
                 }};
             }}
         "
@@ -216,7 +216,7 @@ fn compiled_modules(components: &[(String, String)]) -> String {
             "
             lazy_static::lazy_static!{{
                 static ref {global}: wasmtime::Module = {{
-                    wasmtime::Module::from_file(&ENGINE, \"{file}\").unwrap()
+                    wasmtime::Module::from_file(&ENGINE, {file:?}).unwrap()
                 }};
             }}
         "
