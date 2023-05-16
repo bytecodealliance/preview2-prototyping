@@ -105,17 +105,6 @@ fn main() {
         .map(|stem| compile_component(stem, &out_dir, &reactor_adapter))
         .collect::<Vec<_>>();
 
-    {
-        let src = format!(
-            "const COMMAND_TESTS_COMPONENTS: &[(&str, &str)] = &{command_tests:?};
-         const WASI_TESTS_MODULES: &[(&str, &str)] = &{wasi_tests_modules:?};
-         const WASI_TESTS_COMPONENTS: &[(&str, &str)] = &{wasi_tests_components:?};
-         const REACTOR_TESTS_COMPONENTS: &[(&str, &str)] = &{reactor_tests:?};
-        ",
-        );
-        std::fs::write(out_dir.join("components.rs"), src).unwrap();
-    }
-
     std::fs::write(
         out_dir.join("command_tests_components.rs"),
         compiled_components(&command_tests),
