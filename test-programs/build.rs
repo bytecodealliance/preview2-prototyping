@@ -24,7 +24,10 @@ fn build_adapter(name: &str, features: &[&str]) -> Vec<u8> {
 
     let adapter = out_dir.join(format!("wasi_preview1_component_adapter.{name}.wasm"));
     std::fs::copy(
-        out_dir.join("wasm32-unknown-unknown/release/wasi_preview1_component_adapter.wasm"),
+        out_dir
+            .join("wasm32-unknown-unknown")
+            .join("release")
+            .join("wasi_preview1_component_adapter.wasm"),
         &adapter,
     )
     .unwrap();
@@ -85,7 +88,8 @@ fn main() {
             (
                 stem.clone(),
                 out_dir
-                    .join("wasm32-wasi/debug")
+                    .join("wasm32-wasi")
+                    .join("debug")
                     .join(format!("{stem}.wasm"))
                     .as_os_str()
                     .to_str()
@@ -130,7 +134,8 @@ fn main() {
 fn compile_component(stem: String, out_dir: &PathBuf, adapter: &[u8]) -> (String, String) {
     let stem = stem.to_snake_case();
     let file = out_dir
-        .join("wasm32-wasi/debug")
+        .join("wasm32-wasi")
+        .join("debug")
         .join(format!("{stem}.wasm"));
     let module = fs::read(&file).expect("read wasm module");
     let component = ComponentEncoder::default()
