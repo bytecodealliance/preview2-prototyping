@@ -76,8 +76,10 @@ jobs:
     - run: rustup update nightly-2023-03-14
     - run: rustup target add --toolchain=stable wasm32-wasi wasm32-unknown-unknown
     - run: rustup target add --toolchain=nightly-2023-03-14 wasm32-wasi wasm32-unknown-unknown
+    - name: Build host (executable)
+      run: cargo build -p host
     - name: Run test suite
-      run: cargo test -p host
+      run: cargo test -p test-programs
 
   build-preview1-component-adapter:
     name: Build wasi-preview1-component-adapter
