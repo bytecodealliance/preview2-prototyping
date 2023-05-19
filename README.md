@@ -28,7 +28,8 @@ repository upstream:
   `wasi-common` crate. The new home is in the
   [`wasmtime-wasi` crate under the `preview2` module](https://github.com/bytecodealliance/wasmtime/tree/main/crates/wasi/src/preview2).
 
-* Change your source code's `use wasi_common::{WasiCtxBuilder, WasiView, wasi::Command}`
+* If you were vendoring in the `wasi-common` from this repository, change your
+  source code's `use wasi_common::{WasiCtxBuilder, WasiView, wasi::Command}`
   to `use wasmtime_wasi::preview2::{WasiCtxBuilder, WasiView, wasi::Command}`
   to switch to the new implementation.
 
