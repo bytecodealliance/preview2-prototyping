@@ -131,13 +131,13 @@ async fn overwrite_preopen() {
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
+#[cfg_attr(not(windows), should_panic)]
 async fn dangling_fd() {
     run_with_temp_dir("dangling_fd").await
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
+#[cfg_attr(not(windows), should_panic)]
 async fn dangling_symlink() {
     run_with_temp_dir("dangling_symlink").await
 }
@@ -345,7 +345,7 @@ async fn symlink_filestat() {
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
+#[cfg_attr(not(windows), should_panic)]
 async fn symlink_loop() {
     run_with_temp_dir("symlink_loop").await
 }
