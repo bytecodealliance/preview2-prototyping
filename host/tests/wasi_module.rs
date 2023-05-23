@@ -156,7 +156,6 @@ async fn fd_filestat_get() {
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
 async fn fd_filestat_set() {
     run_with_temp_dir("fd_filestat_set").await
 }

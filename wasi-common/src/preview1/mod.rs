@@ -175,7 +175,25 @@ impl<T: WasiPreview1View + ?Sized> DescriptorsRef<'_, T> {
         self.descriptors.get_mut().get(&fd)
     }
 
-    fn get_dirfd(&mut self, fd: types::Fd) -> Option<wasi::filesystem::Descriptor> {
+    fn get_fd(&mut self, fd: types::Fd) -> Option<wasi::filesystem::Descriptor> {
+        let fd = fd.into();
+        match self.descriptors.get_mut().get(&fd)? {
+            Descriptor::File { fd, .. } => Some(*fd),
+            Descriptor::PreopenDirectory((fd, _)) => Some(*fd),
+            Descriptor::Stdin(stream) => Some(*stream),
+            Descriptor::Stdout(stream) | Descriptor::Stderr(stream) => Some(*stream),
+        }
+    }
+
+    fn get_file_fd(&mut self, fd: types::Fd) -> Option<wasi::filesystem::Descriptor> {
+        let fd = fd.into();
+        match self.descriptors.get_mut().get(&fd)? {
+            Descriptor::File { fd, .. } if self.view.table().is_file(*fd) => Some(*fd),
+            _ => None,
+        }
+    }
+
+    fn get_dir_fd(&mut self, fd: types::Fd) -> Option<wasi::filesystem::Descriptor> {
         let fd = fd.into();
         match self.descriptors.get_mut().get(&fd)? {
             Descriptor::File { fd, .. } if self.view.table().is_dir(*fd) => Some(*fd),
@@ -200,11 +218,25 @@ trait WasiPreview1ViewExt: WasiPreview1View + wasi::preopens::Host {
         })
     }
 
-    async fn get_dirfd(
+    async fn get_fd(
         &mut self,
         fd: types::Fd,
     ) -> Result<Option<wasi::filesystem::Descriptor>, types::Error> {
-        self.descriptors().await.map(|mut ds| ds.get_dirfd(fd))
+        self.descriptors().await.map(|mut ds| ds.get_fd(fd))
+    }
+
+    async fn get_file_fd(
+        &mut self,
+        fd: types::Fd,
+    ) -> Result<Option<wasi::filesystem::Descriptor>, types::Error> {
+        self.descriptors().await.map(|mut ds| ds.get_file_fd(fd))
+    }
+
+    async fn get_dir_fd(
+        &mut self,
+        fd: types::Fd,
+    ) -> Result<Option<wasi::filesystem::Descriptor>, types::Error> {
+        self.descriptors().await.map(|mut ds| ds.get_dir_fd(fd))
     }
 }
 
@@ -240,6 +272,27 @@ wiggle::from_witx!({
 impl wiggle::GuestErrorType for types::Errno {
     fn success() -> Self {
         Self::Success
+    }
+}
+
+fn systimespec(
+    set: bool,
+    ts: types::Timestamp,
+    now: bool,
+) -> ErrnoResult<wasi::filesystem::NewTimestamp> {
+    if set && now {
+        Err(types::Errno::Inval)
+    } else if set {
+        Ok(wasi::filesystem::NewTimestamp::Timestamp(
+            wasi::filesystem::Datetime {
+                seconds: ts / 1_000_000_000,
+                nanoseconds: (ts % 1_000_000_000) as _,
+            },
+        ))
+    } else if now {
+        Ok(wasi::filesystem::NewTimestamp::Now)
+    } else {
+        Ok(wasi::filesystem::NewTimestamp::NoChange)
     }
 }
 
@@ -634,19 +687,14 @@ impl<
         len: types::Filesize,
         advice: types::Advice,
     ) -> Result<(), types::Error> {
-        let desc = self.descriptors().await?.get(fd).cloned();
-        match desc {
-            Some(Descriptor::File { fd, .. }) if self.table().is_file(fd) => self
-                .advise(fd, offset, len, advice.into())
-                .await
-                .map_err(|e| {
-                    e.try_into()
-                        .context("failed to call `advise`")
-                        .unwrap_or_else(types::Error::trap)
-                }),
-            // NOTE: legacy implementation returns `BADF` here
-            _ => Err(types::Errno::Badf.into()),
-        }
+        let fd = self.get_file_fd(fd).await?.ok_or(types::Errno::Badf)?;
+        self.advise(fd, offset, len, advice.into())
+            .await
+            .map_err(|e| {
+                e.try_into()
+                    .context("failed to call `advise`")
+                    .unwrap_or_else(types::Error::trap)
+            })
     }
 
     #[instrument(skip(self))]
@@ -833,20 +881,16 @@ impl<
         fd: types::Fd,
         size: types::Filesize,
     ) -> Result<(), types::Error> {
-        let desc = self.descriptors().await?.get(fd).cloned();
-        match desc {
-            Some(Descriptor::File { fd, .. }) if self.table().is_file(fd) => {
-                self.set_size(fd, size).await.map_err(|e| {
-                    e.try_into()
-                        .context("failed to call `set-size`")
-                        .unwrap_or_else(types::Error::trap)
-                })
-            }
-            // NOTE: legacy implementation returns `BADF` here
-            _ => Err(types::Errno::Badf.into()),
-        }
+        let fd = self.get_file_fd(fd).await?.ok_or(types::Errno::Badf)?;
+        self.set_size(fd, size).await.map_err(|e| {
+            e.try_into()
+                .context("failed to call `set-size`")
+                .unwrap_or_else(types::Error::trap)
+        })
     }
 
+    /// Adjust the timestamps of an open file or directory.
+    /// NOTE: This is similar to `futimens` in POSIX.
     #[instrument(skip(self))]
     async fn fd_filestat_set_times(
         &mut self,
@@ -855,7 +899,23 @@ impl<
         mtim: types::Timestamp,
         fst_flags: types::Fstflags,
     ) -> Result<(), types::Error> {
-        todo!()
+        let atim = systimespec(
+            fst_flags.contains(types::Fstflags::ATIM),
+            atim,
+            fst_flags.contains(types::Fstflags::ATIM_NOW),
+        )?;
+        let mtim = systimespec(
+            fst_flags.contains(types::Fstflags::MTIM),
+            mtim,
+            fst_flags.contains(types::Fstflags::MTIM_NOW),
+        )?;
+
+        let fd = self.get_fd(fd).await?.ok_or(types::Errno::Badf)?;
+        self.set_times(fd, atim, mtim).await.map_err(|e| {
+            e.try_into()
+                .context("failed to call `set-times`")
+                .unwrap_or_else(types::Error::trap)
+        })
     }
 
     #[instrument(skip(self))]
@@ -1088,7 +1148,7 @@ impl<
         dirfd: types::Fd,
         path: &GuestPtr<'a, str>,
     ) -> Result<(), types::Error> {
-        let dirfd = self.get_dirfd(dirfd).await?.ok_or(types::Errno::Badf)?;
+        let dirfd = self.get_dir_fd(dirfd).await?.ok_or(types::Errno::Badf)?;
         let path = read_string(path)?;
         self.create_directory_at(dirfd, path).await.map_err(|e| {
             e.try_into()
@@ -1215,7 +1275,7 @@ impl<
         dirfd: types::Fd,
         path: &GuestPtr<'a, str>,
     ) -> Result<(), types::Error> {
-        let dirfd = self.get_dirfd(dirfd).await?.ok_or(types::Errno::Badf)?;
+        let dirfd = self.get_dir_fd(dirfd).await?.ok_or(types::Errno::Badf)?;
         let path = read_string(path)?;
         self.remove_directory_at(dirfd, path).await.map_err(|e| {
             e.try_into()
@@ -1242,7 +1302,7 @@ impl<
         dirfd: types::Fd,
         dest_path: &GuestPtr<'a, str>,
     ) -> Result<(), types::Error> {
-        let dirfd = self.get_dirfd(dirfd).await?.ok_or(types::Errno::Badf)?;
+        let dirfd = self.get_dir_fd(dirfd).await?.ok_or(types::Errno::Badf)?;
         let src_path = read_string(src_path)?;
         let dest_path = read_string(dest_path)?;
         self.symlink_at(dirfd, src_path, dest_path)
@@ -1260,7 +1320,7 @@ impl<
         dirfd: types::Fd,
         path: &GuestPtr<'a, str>,
     ) -> Result<(), types::Error> {
-        let dirfd = self.get_dirfd(dirfd).await?.ok_or(types::Errno::Badf)?;
+        let dirfd = self.get_dir_fd(dirfd).await?.ok_or(types::Errno::Badf)?;
         let path = path.as_cow().map_err(|_| types::Errno::Inval)?.to_string();
         self.unlink_file_at(dirfd, path).await.map_err(|e| {
             e.try_into()
