@@ -125,7 +125,6 @@ async fn close_preopen() {
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
 async fn overwrite_preopen() {
     run_with_temp_dir("overwrite_preopen").await
 }
@@ -153,7 +152,6 @@ async fn fd_advise() {
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
 async fn fd_filestat_get() {
     run_with_temp_dir("fd_filestat_get").await
 }

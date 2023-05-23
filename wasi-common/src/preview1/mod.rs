@@ -12,7 +12,7 @@ use core::sync::atomic::{AtomicU64, Ordering};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use anyhow::{anyhow, Context};
+use anyhow::{anyhow, bail, Context};
 use wiggle::tracing::instrument;
 use wiggle::{GuestPtr, GuestStrCow};
 
@@ -169,6 +169,22 @@ impl<T: WasiPreview1View + ?Sized> DerefMut for DescriptorsRef<'_, T> {
     }
 }
 
+impl<T: WasiPreview1View + ?Sized> DescriptorsRef<'_, T> {
+    fn get(&mut self, fd: types::Fd) -> Option<&Descriptor> {
+        let fd = fd.into();
+        self.descriptors.get_mut().get(&fd)
+    }
+
+    fn get_dirfd(&mut self, fd: types::Fd) -> Option<wasi::filesystem::Descriptor> {
+        let fd = fd.into();
+        match self.descriptors.get_mut().get(&fd)? {
+            Descriptor::File { fd, .. } if self.view.table().is_dir(*fd) => Some(*fd),
+            Descriptor::PreopenDirectory((fd, _)) => Some(*fd),
+            _ => None,
+        }
+    }
+}
+
 #[wiggle::async_trait]
 trait WasiPreview1ViewExt: WasiPreview1View + wasi::preopens::Host {
     async fn descriptors(&mut self) -> Result<DescriptorsRef<'_, Self>, types::Error> {
@@ -189,22 +205,6 @@ trait WasiPreview1ViewExt: WasiPreview1View + wasi::preopens::Host {
         fd: types::Fd,
     ) -> Result<Option<wasi::filesystem::Descriptor>, types::Error> {
         self.descriptors().await.map(|mut ds| ds.get_dirfd(fd))
-    }
-}
-
-impl<T: WasiPreview1View + ?Sized> DescriptorsRef<'_, T> {
-    fn get(&mut self, fd: types::Fd) -> Option<&Descriptor> {
-        let fd = fd.into();
-        self.descriptors.get_mut().get(&fd)
-    }
-
-    fn get_dirfd(&mut self, fd: types::Fd) -> Option<wasi::filesystem::Descriptor> {
-        let fd = fd.into();
-        match self.descriptors.get_mut().get(&fd)? {
-            Descriptor::File { fd, .. } if self.view.table().is_dir(*fd) => Some(*fd),
-            Descriptor::PreopenDirectory((fd, _)) => Some(*fd),
-            _ => None,
-        }
     }
 }
 
@@ -285,6 +285,30 @@ impl From<types::Oflags> for wasi::filesystem::OpenFlags {
             out |= wasi::filesystem::OpenFlags::TRUNCATE;
         }
         out
+    }
+}
+
+impl TryFrom<wasi::filesystem::DescriptorType> for types::Filetype {
+    type Error = anyhow::Error;
+
+    fn try_from(ty: wasi::filesystem::DescriptorType) -> Result<types::Filetype, Self::Error> {
+        match ty {
+            wasi::filesystem::DescriptorType::RegularFile => Ok(types::Filetype::RegularFile),
+            wasi::filesystem::DescriptorType::Directory => Ok(types::Filetype::Directory),
+            wasi::filesystem::DescriptorType::BlockDevice => Ok(types::Filetype::BlockDevice),
+            wasi::filesystem::DescriptorType::CharacterDevice => {
+                Ok(types::Filetype::CharacterDevice)
+            }
+            // preview1 never had a FIFO code.
+            wasi::filesystem::DescriptorType::Fifo => Ok(types::Filetype::Unknown),
+            // TODO: Add a way to disginguish between FILETYPE_SOCKET_STREAM and
+            // FILETYPE_SOCKET_DGRAM.
+            wasi::filesystem::DescriptorType::Socket => {
+                bail!("sockets are not currently supported")
+            }
+            wasi::filesystem::DescriptorType::SymbolicLink => Ok(types::Filetype::SymbolicLink),
+            wasi::filesystem::DescriptorType::Unknown => Ok(types::Filetype::Unknown),
+        }
     }
 }
 
@@ -665,28 +689,16 @@ impl<
                 .context("failed to call `get-flags`")
                 .unwrap_or_else(types::Error::trap)
         })?;
-        let ty = self.get_type(fd).await.map_err(|e| {
-            e.try_into()
-                .context("failed to call `get-type`")
-                .unwrap_or_else(types::Error::trap)
-        })?;
-        let fs_filetype = match ty {
-            wasi::filesystem::DescriptorType::RegularFile => types::Filetype::RegularFile,
-            wasi::filesystem::DescriptorType::Directory => types::Filetype::Directory,
-            wasi::filesystem::DescriptorType::BlockDevice => types::Filetype::BlockDevice,
-            wasi::filesystem::DescriptorType::CharacterDevice => types::Filetype::CharacterDevice,
-            // preview1 never had a FIFO code.
-            wasi::filesystem::DescriptorType::Fifo => types::Filetype::Unknown,
-            // TODO: Add a way to disginguish between FILETYPE_SOCKET_STREAM and
-            // FILETYPE_SOCKET_DGRAM.
-            wasi::filesystem::DescriptorType::Socket => {
-                return Err(types::Error::trap(anyhow!(
-                    "sockets are not currently supported"
-                )))
-            }
-            wasi::filesystem::DescriptorType::SymbolicLink => types::Filetype::SymbolicLink,
-            wasi::filesystem::DescriptorType::Unknown => types::Filetype::Unknown,
-        };
+        let fs_filetype = self
+            .get_type(fd)
+            .await
+            .map_err(|e| {
+                e.try_into()
+                    .context("failed to call `get-type`")
+                    .unwrap_or_else(types::Error::trap)
+            })?
+            .try_into()
+            .map_err(types::Error::trap)?;
         let mut fs_flags = types::Fdflags::empty();
         let mut fs_rights_base = types::Rights::all();
         if !flags.contains(wasi::filesystem::DescriptorFlags::READ) {
@@ -737,9 +749,55 @@ impl<
         todo!()
     }
 
+    /// Return the attributes of an open file.
     #[instrument(skip(self))]
     async fn fd_filestat_get(&mut self, fd: types::Fd) -> Result<types::Filestat, types::Error> {
-        todo!()
+        let desc = self.descriptors().await?.get(fd).cloned();
+        match desc {
+            Some(Descriptor::Stdin(..) | Descriptor::Stdout(..) | Descriptor::Stderr(..)) => {
+                Ok(types::Filestat {
+                    dev: 0,
+                    ino: 0,
+                    filetype: types::Filetype::CharacterDevice,
+                    nlink: 0,
+                    size: 0,
+                    atim: 0,
+                    mtim: 0,
+                    ctim: 0,
+                })
+            }
+            Some(Descriptor::PreopenDirectory((fd, _)) | Descriptor::File { fd, .. }) => {
+                let wasi::filesystem::DescriptorStat {
+                    device,
+                    inode,
+                    type_,
+                    link_count,
+                    size,
+                    data_access_timestamp,
+                    data_modification_timestamp,
+                    status_change_timestamp,
+                } = self.stat(fd).await.map_err(|e| {
+                    e.try_into()
+                        .context("failed to call `stat`")
+                        .unwrap_or_else(types::Error::trap)
+                })?;
+                let filetype = type_.try_into().map_err(types::Error::trap)?;
+                let atim = data_access_timestamp.try_into()?;
+                let mtim = data_modification_timestamp.try_into()?;
+                let ctim = status_change_timestamp.try_into()?;
+                Ok(types::Filestat {
+                    dev: device,
+                    ino: inode,
+                    filetype,
+                    nlink: link_count,
+                    size,
+                    atim,
+                    mtim,
+                    ctim,
+                })
+            }
+            None => Err(types::Errno::Badf.into()),
+        }
     }
 
     #[instrument(skip(self))]
