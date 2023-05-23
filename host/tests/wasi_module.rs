@@ -173,7 +173,6 @@ async fn fd_readdir() {
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
 async fn file_allocate() {
     run_with_temp_dir("file_allocate").await
 }

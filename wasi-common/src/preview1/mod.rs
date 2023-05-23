@@ -697,6 +697,8 @@ impl<
             })
     }
 
+    /// Force the allocation of space in a file.
+    /// NOTE: This is similar to `posix_fallocate` in POSIX.
     #[instrument(skip(self))]
     async fn fd_allocate(
         &mut self,
@@ -704,7 +706,8 @@ impl<
         _offset: types::Filesize,
         _len: types::Filesize,
     ) -> Result<(), types::Error> {
-        todo!()
+        self.get_file_fd(fd).await?.ok_or(types::Errno::Badf)?;
+        Err(types::Errno::Notsup.into())
     }
 
     /// Close a file descriptor.
