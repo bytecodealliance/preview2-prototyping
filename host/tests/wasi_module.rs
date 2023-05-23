@@ -137,7 +137,6 @@ async fn dangling_fd() {
 }
 
 #[test_log::test(tokio::test)]
-#[cfg_attr(not(windows), should_panic)]
 async fn dangling_symlink() {
     run_with_temp_dir("dangling_symlink").await
 }
@@ -215,7 +214,6 @@ async fn interesting_paths() {
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
 async fn isatty() {
     run_with_temp_dir("isatty").await
 }
@@ -245,7 +243,6 @@ async fn path_link() {
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
 async fn path_open_create_existing() {
     run_with_temp_dir("path_open_create_existing").await
 }
@@ -345,7 +342,6 @@ async fn symlink_filestat() {
 }
 
 #[test_log::test(tokio::test)]
-#[cfg_attr(not(windows), should_panic)]
 async fn symlink_loop() {
     run_with_temp_dir("symlink_loop").await
 }

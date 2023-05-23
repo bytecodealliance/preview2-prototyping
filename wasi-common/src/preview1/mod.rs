@@ -1122,7 +1122,13 @@ impl<
         dirfd: types::Fd,
         path: &GuestPtr<'a, str>,
     ) -> Result<(), types::Error> {
-        todo!()
+        let dirfd = self.get_dirfd(dirfd).await?.ok_or(types::Errno::Badf)?;
+        let path = path.as_cow().map_err(|_| types::Errno::Inval)?.to_string();
+        self.unlink_file_at(dirfd, path).await.map_err(|e| {
+            e.try_into()
+                .context("failed to call `unlink-file-at`")
+                .unwrap_or_else(types::Error::trap)
+        })
     }
 
     #[instrument(skip(self))]
