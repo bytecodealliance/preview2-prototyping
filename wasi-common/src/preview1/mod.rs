@@ -177,7 +177,7 @@ impl<T: WasiPreview1View + ?Sized> DerefMut for DescriptorsRef<'_, T> {
 }
 
 impl<T: WasiPreview1View + ?Sized> DescriptorsRef<'_, T> {
-    fn get(&mut self, fd: types::Fd) -> Option<&Descriptor> {
+    fn get_descriptor(&mut self, fd: types::Fd) -> Option<&Descriptor> {
         let fd = fd.into();
         self.descriptors.get_mut().get(&fd)
     }
@@ -793,7 +793,7 @@ impl<
     /// NOTE: This returns similar flags to `fsync(fd, F_GETFL)` in POSIX, as well as additional fields.
     #[instrument(skip(self))]
     async fn fd_fdstat_get(&mut self, fd: types::Fd) -> Result<types::Fdstat, types::Error> {
-        let (fd, blocking, append) = match self.descriptors().await?.get(fd) {
+        let (fd, blocking, append) = match self.descriptors().await?.get_descriptor(fd) {
             Some(Descriptor::Stdin(..)) => {
                 let fs_rights_base = types::Rights::FD_READ;
                 return Ok(types::Fdstat {
@@ -908,7 +908,7 @@ impl<
     /// Return the attributes of an open file.
     #[instrument(skip(self))]
     async fn fd_filestat_get(&mut self, fd: types::Fd) -> Result<types::Filestat, types::Error> {
-        let desc = self.descriptors().await?.get(fd).cloned();
+        let desc = self.descriptors().await?.get_descriptor(fd).cloned();
         match desc {
             Some(Descriptor::Stdin(..) | Descriptor::Stdout(..) | Descriptor::Stderr(..)) => {
                 Ok(types::Filestat {
@@ -1009,7 +1009,7 @@ impl<
         fd: types::Fd,
         iovs: &types::IovecArray<'a>,
     ) -> Result<types::Size, types::Error> {
-        let desc = self.descriptors().await?.get(fd).cloned();
+        let desc = self.descriptors().await?.get_descriptor(fd).cloned();
         let (mut buf, read, end) = match desc {
             Some(Descriptor::File(File {
                 fd,
@@ -1078,7 +1078,7 @@ impl<
         iovs: &types::IovecArray<'a>,
         offset: types::Filesize,
     ) -> Result<types::Size, types::Error> {
-        let desc = self.descriptors().await?.get(fd).cloned();
+        let desc = self.descriptors().await?.get_descriptor(fd).cloned();
         let (mut buf, read, end) = match desc {
             Some(Descriptor::File(File { fd, blocking, .. })) if self.table().is_file(fd) => {
                 let Some(buf) = first_non_empty_iovec(iovs)? else {
@@ -1127,7 +1127,7 @@ impl<
         fd: types::Fd,
         ciovs: &types::CiovecArray<'a>,
     ) -> Result<types::Size, types::Error> {
-        let desc = self.descriptors().await?.get(fd).cloned();
+        let desc = self.descriptors().await?.get_descriptor(fd).cloned();
         let n = match desc {
             Some(Descriptor::File(File {
                 fd,
@@ -1191,7 +1191,7 @@ impl<
         ciovs: &types::CiovecArray<'a>,
         offset: types::Filesize,
     ) -> Result<types::Size, types::Error> {
-        let desc = self.descriptors().await?.get(fd).cloned();
+        let desc = self.descriptors().await?.get_descriptor(fd).cloned();
         let n = match desc {
             Some(Descriptor::File(File { fd, blocking, .. })) if self.table().is_file(fd) => {
                 let Some(buf) = first_non_empty_ciovec(ciovs)? else {
@@ -1224,7 +1224,9 @@ impl<
     /// Return a description of the given preopened file descriptor.
     #[instrument(skip(self))]
     async fn fd_prestat_get(&mut self, fd: types::Fd) -> Result<types::Prestat, types::Error> {
-        if let Some(Descriptor::PreopenDirectory((_, p))) = self.descriptors().await?.get(fd) {
+        if let Some(Descriptor::PreopenDirectory((_, p))) =
+            self.descriptors().await?.get_descriptor(fd)
+        {
             let pr_name_len = p.len().try_into().or(Err(types::Errno::Overflow))?;
             return Ok(types::Prestat::Dir(types::PrestatDir { pr_name_len }));
         }
@@ -1240,7 +1242,9 @@ impl<
         path_max_len: types::Size,
     ) -> Result<(), types::Error> {
         let path_max_len = path_max_len.try_into().or(Err(types::Errno::Overflow))?;
-        if let Some(Descriptor::PreopenDirectory((_, p))) = self.descriptors().await?.get(fd) {
+        if let Some(Descriptor::PreopenDirectory((_, p))) =
+            self.descriptors().await?.get_descriptor(fd)
+        {
             // NOTE: This conditional is not valid, the bug is preserved from legacy implementation
             // for backwards-compatibility
             // https://github.com/bytecodealliance/wasmtime/blob/b9e4474f1f04ae15ca27ca0ed695d798e1c0a295/crates/wasi-common/src/snapshots/preview_1.rs#L507-L514
@@ -1415,7 +1419,7 @@ impl<
             flags |= wasi::filesystem::DescriptorFlags::REQUESTED_WRITE_SYNC;
         }
 
-        let desc = self.descriptors().await?.get(dirfd).cloned();
+        let desc = self.descriptors().await?.get_descriptor(dirfd).cloned();
         let dirfd = match desc {
             Some(Descriptor::PreopenDirectory((fd, _))) => fd,
             Some(Descriptor::File(File { fd, .. })) if self.table().is_dir(fd) => fd,
