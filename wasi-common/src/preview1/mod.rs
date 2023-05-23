@@ -288,10 +288,23 @@ impl From<types::Oflags> for wasi::filesystem::OpenFlags {
     }
 }
 
+impl From<types::Advice> for wasi::filesystem::Advice {
+    fn from(advice: types::Advice) -> Self {
+        match advice {
+            types::Advice::Normal => wasi::filesystem::Advice::Normal,
+            types::Advice::Sequential => wasi::filesystem::Advice::Sequential,
+            types::Advice::Random => wasi::filesystem::Advice::Random,
+            types::Advice::Willneed => wasi::filesystem::Advice::WillNeed,
+            types::Advice::Dontneed => wasi::filesystem::Advice::DontNeed,
+            types::Advice::Noreuse => wasi::filesystem::Advice::NoReuse,
+        }
+    }
+}
+
 impl TryFrom<wasi::filesystem::DescriptorType> for types::Filetype {
     type Error = anyhow::Error;
 
-    fn try_from(ty: wasi::filesystem::DescriptorType) -> Result<types::Filetype, Self::Error> {
+    fn try_from(ty: wasi::filesystem::DescriptorType) -> Result<Self, Self::Error> {
         match ty {
             wasi::filesystem::DescriptorType::RegularFile => Ok(types::Filetype::RegularFile),
             wasi::filesystem::DescriptorType::Directory => Ok(types::Filetype::Directory),
@@ -313,7 +326,7 @@ impl TryFrom<wasi::filesystem::DescriptorType> for types::Filetype {
 }
 
 impl From<wasi::filesystem::ErrorCode> for types::Errno {
-    fn from(code: wasi::filesystem::ErrorCode) -> types::Errno {
+    fn from(code: wasi::filesystem::ErrorCode) -> Self {
         match code {
             wasi::filesystem::ErrorCode::Access => types::Errno::Acces,
             wasi::filesystem::ErrorCode::WouldBlock => types::Errno::Again,
@@ -357,7 +370,7 @@ impl From<wasi::filesystem::ErrorCode> for types::Errno {
 }
 
 impl From<wasi::filesystem::ErrorCode> for types::Error {
-    fn from(code: wasi::filesystem::ErrorCode) -> types::Error {
+    fn from(code: wasi::filesystem::ErrorCode) -> Self {
         types::Errno::from(code).into()
     }
 }
@@ -365,7 +378,7 @@ impl From<wasi::filesystem::ErrorCode> for types::Error {
 impl TryFrom<wasi::filesystem::Error> for types::Errno {
     type Error = anyhow::Error;
 
-    fn try_from(err: wasi::filesystem::Error) -> Result<types::Errno, Self::Error> {
+    fn try_from(err: wasi::filesystem::Error) -> Result<Self, Self::Error> {
         match err.downcast() {
             Ok(code) => Ok(code.into()),
             Err(e) => Err(e),
@@ -376,7 +389,7 @@ impl TryFrom<wasi::filesystem::Error> for types::Errno {
 impl TryFrom<wasi::filesystem::Error> for types::Error {
     type Error = anyhow::Error;
 
-    fn try_from(err: wasi::filesystem::Error) -> Result<types::Error, Self::Error> {
+    fn try_from(err: wasi::filesystem::Error) -> Result<Self, Self::Error> {
         match err.downcast() {
             Ok(code) => Ok(code.into()),
             Err(e) => Err(e),
@@ -385,7 +398,7 @@ impl TryFrom<wasi::filesystem::Error> for types::Error {
 }
 
 impl From<TableError> for types::Errno {
-    fn from(err: TableError) -> types::Errno {
+    fn from(err: TableError) -> Self {
         match err {
             TableError::Full => types::Errno::Nomem,
             TableError::NotPresent | TableError::WrongType => types::Errno::Badf,
@@ -394,7 +407,7 @@ impl From<TableError> for types::Errno {
 }
 
 impl From<TableError> for types::Error {
-    fn from(err: TableError) -> types::Error {
+    fn from(err: TableError) -> Self {
         types::Errno::from(err).into()
     }
 }
@@ -621,7 +634,19 @@ impl<
         len: types::Filesize,
         advice: types::Advice,
     ) -> Result<(), types::Error> {
-        todo!()
+        let desc = self.descriptors().await?.get(fd).cloned();
+        match desc {
+            Some(Descriptor::File { fd, .. }) if self.table().is_file(fd) => self
+                .advise(fd, offset, len, advice.into())
+                .await
+                .map_err(|e| {
+                    e.try_into()
+                        .context("failed to call `advise`")
+                        .unwrap_or_else(types::Error::trap)
+                }),
+            // NOTE: legacy implementation returns `BADF` here
+            _ => Err(types::Errno::Badf.into()),
+        }
     }
 
     #[instrument(skip(self))]

@@ -146,7 +146,6 @@ async fn directory_seek() {
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
 async fn fd_advise() {
     run_with_temp_dir("fd_advise").await
 }
