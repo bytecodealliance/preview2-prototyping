@@ -161,7 +161,6 @@ async fn fd_filestat_set() {
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
 async fn fd_flags_set() {
     run_with_temp_dir("fd_flags_set").await
 }
@@ -215,7 +214,6 @@ async fn nofollow_errors() {
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
 async fn path_exists() {
     run_with_temp_dir("path_exists").await
 }

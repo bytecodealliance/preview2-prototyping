@@ -926,10 +926,10 @@ impl<
             }
             Some(Descriptor::PreopenDirectory((fd, _)) | Descriptor::File(File { fd, .. })) => {
                 let wasi::filesystem::DescriptorStat {
-                    device,
-                    inode,
+                    device: dev,
+                    inode: ino,
                     type_,
-                    link_count,
+                    link_count: nlink,
                     size,
                     data_access_timestamp,
                     data_modification_timestamp,
@@ -944,10 +944,10 @@ impl<
                 let mtim = data_modification_timestamp.try_into()?;
                 let ctim = status_change_timestamp.try_into()?;
                 Ok(types::Filestat {
-                    dev: device,
-                    ino: inode,
+                    dev,
+                    ino,
                     filetype,
-                    nlink: link_count,
+                    nlink,
                     size,
                     atim,
                     mtim,
@@ -1354,6 +1354,8 @@ impl<
         })
     }
 
+    /// Return the attributes of a file or directory.
+    /// NOTE: This is similar to `stat` in POSIX.
     #[instrument(skip(self))]
     async fn path_filestat_get<'a>(
         &mut self,
@@ -1361,7 +1363,36 @@ impl<
         flags: types::Lookupflags,
         path: &GuestPtr<'a, str>,
     ) -> Result<types::Filestat, types::Error> {
-        todo!()
+        let dirfd = self.get_dir_fd(dirfd).await?.ok_or(types::Errno::Badf)?;
+        let path = read_string(path)?;
+        let wasi::filesystem::DescriptorStat {
+            device: dev,
+            inode: ino,
+            type_,
+            link_count: nlink,
+            size,
+            data_access_timestamp,
+            data_modification_timestamp,
+            status_change_timestamp,
+        } = self.stat_at(dirfd, flags.into(), path).await.map_err(|e| {
+            e.try_into()
+                .context("failed to call `stat-at`")
+                .unwrap_or_else(types::Error::trap)
+        })?;
+        let filetype = type_.try_into().map_err(types::Error::trap)?;
+        let atim = data_access_timestamp.try_into()?;
+        let mtim = data_modification_timestamp.try_into()?;
+        let ctim = status_change_timestamp.try_into()?;
+        Ok(types::Filestat {
+            dev,
+            ino,
+            filetype,
+            nlink,
+            size,
+            atim,
+            mtim,
+            ctim,
+        })
     }
 
     #[instrument(skip(self))]
