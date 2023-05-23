@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context};
 use wiggle::tracing::instrument;
-use wiggle::GuestPtr;
+use wiggle::{GuestPtr, GuestStrCow};
 
 #[derive(Clone, Debug)]
 enum Descriptor {
@@ -183,12 +183,28 @@ trait WasiPreview1ViewExt: WasiPreview1View + wasi::preopens::Host {
             descriptors,
         })
     }
+
+    async fn get_dirfd(
+        &mut self,
+        fd: types::Fd,
+    ) -> Result<Option<wasi::filesystem::Descriptor>, types::Error> {
+        self.descriptors().await.map(|mut ds| ds.get_dirfd(fd))
+    }
 }
 
 impl<T: WasiPreview1View + ?Sized> DescriptorsRef<'_, T> {
     fn get(&mut self, fd: types::Fd) -> Option<&Descriptor> {
         let fd = fd.into();
         self.descriptors.get_mut().get(&fd)
+    }
+
+    fn get_dirfd(&mut self, fd: types::Fd) -> Option<wasi::filesystem::Descriptor> {
+        let fd = fd.into();
+        match self.descriptors.get_mut().get(&fd)? {
+            Descriptor::File { fd, .. } if self.view.table().is_dir(*fd) => Some(*fd),
+            Descriptor::PreopenDirectory((fd, _)) => Some(*fd),
+            _ => None,
+        }
     }
 }
 
@@ -381,6 +397,15 @@ fn write_byte<'a>(ptr: impl Borrow<GuestPtr<'a, u8>>, byte: u8) -> ErrnoResult<G
     let ptr = ptr.borrow();
     ptr.write(byte).or(Err(types::Errno::Inval))?;
     ptr.add(1).or(Err(types::Errno::Inval))
+}
+
+fn read_str<'a>(ptr: impl Borrow<GuestPtr<'a, str>>) -> ErrnoResult<GuestStrCow<'a>> {
+    // NOTE: legacy implementation always returns Inval errno
+    ptr.borrow().as_cow().or(Err(types::Errno::Inval))
+}
+
+fn read_string<'a>(ptr: impl Borrow<GuestPtr<'a, str>>) -> ErrnoResult<String> {
+    read_str(ptr).map(|s| s.to_string())
 }
 
 // Find first non-empty buffer.
@@ -988,7 +1013,7 @@ impl<
         _fs_rights_inheriting: types::Rights,
         fdflags: types::Fdflags,
     ) -> Result<types::Fd, types::Error> {
-        let path = path.as_cow().map_err(|_| types::Errno::Inval)?.to_string();
+        let path = read_string(path)?;
 
         let mut flags = wasi::filesystem::DescriptorFlags::empty();
         if fs_rights_base.contains(types::Rights::FD_READ) {
@@ -1012,7 +1037,8 @@ impl<
             Some(Descriptor::PreopenDirectory((fd, _))) => fd,
             Some(Descriptor::File { fd, .. }) if self.table().is_dir(fd) => fd,
             Some(Descriptor::File { fd, .. }) if !self.table().is_dir(fd) => {
-                return Err(types::Errno::Notdir.into())
+                // NOTE: Unlike most other methods, legacy implementation returns `NOTDIR` here
+                return Err(types::Errno::Notdir.into());
             }
             _ => return Err(types::Errno::Badf.into()),
         };
@@ -1078,7 +1104,16 @@ impl<
         dirfd: types::Fd,
         dest_path: &GuestPtr<'a, str>,
     ) -> Result<(), types::Error> {
-        todo!()
+        let dirfd = self.get_dirfd(dirfd).await?.ok_or(types::Errno::Badf)?;
+        let src_path = read_string(src_path)?;
+        let dest_path = read_string(dest_path)?;
+        self.symlink_at(dirfd, src_path, dest_path)
+            .await
+            .map_err(|e| {
+                e.try_into()
+                    .context("failed to call `symlink-at`")
+                    .unwrap_or_else(types::Error::trap)
+            })
     }
 
     #[instrument(skip(self))]
