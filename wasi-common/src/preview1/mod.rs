@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Context};
 use wiggle::tracing::instrument;
-use wiggle::{GuestPtr, GuestStrCow};
+use wiggle::{GuestPtr, GuestSliceMut, GuestStrCow};
 
 #[derive(Clone, Debug)]
 struct File {
@@ -547,6 +547,28 @@ fn first_non_empty_ciovec(ciovs: &types::CiovecArray<'_>) -> ErrnoResult<Option<
         .transpose()
 }
 
+// Find first non-empty buffer.
+fn first_non_empty_iovec<'a>(
+    iovs: &types::IovecArray<'a>,
+) -> ErrnoResult<Option<GuestSliceMut<'a, u8>>> {
+    iovs.iter()
+        .map(|iov| {
+            let iov = iov
+                .or(Err(types::Errno::Inval))?
+                .read()
+                .or(Err(types::Errno::Inval))?;
+            if iov.buf_len == 0 {
+                return Ok(None);
+            }
+            iov.buf
+                .as_array(iov.buf_len)
+                .as_slice_mut()
+                .map_err(|_| types::Errno::Inval)
+        })
+        .find_map(Result::transpose)
+        .transpose()
+}
+
 // Implement the WasiSnapshotPreview1 trait using only the traits that are
 // required for T, i.e., in terms of the preview 2 wit interface, and state
 // stored in the WasiPreview1Adapter struct.
@@ -955,15 +977,76 @@ impl<
         })
     }
 
+    /// Read from a file descriptor.
+    /// NOTE: This is similar to `readv` in POSIX.
     #[instrument(skip(self))]
     async fn fd_read<'a>(
         &mut self,
         fd: types::Fd,
         iovs: &types::IovecArray<'a>,
     ) -> Result<types::Size, types::Error> {
-        todo!()
+        let desc = self.descriptors().await?.get(fd).cloned();
+        let (mut buf, read, end) = match desc {
+            Some(Descriptor::File(File {
+                fd,
+                blocking,
+                position,
+                ..
+            })) if self.table().is_file(fd) => {
+                let Some(buf) = first_non_empty_iovec(iovs)? else {
+                    return Ok(0)
+                };
+
+                let pos = position.load(Ordering::Relaxed);
+                let stream = self
+                    .read_via_stream(fd, pos)
+                    .await
+                    .context("failed to call `read-via-stream`")
+                    .map_err(types::Error::trap)?;
+                let max = buf.len().try_into().unwrap_or(u64::MAX);
+                let (read, end) = if blocking {
+                    self.blocking_read(stream, max)
+                } else {
+                    wasi::streams::Host::read(self, stream, max)
+                }
+                .await
+                .map_err(|_| types::Errno::Io)?;
+
+                let n = read.len().try_into().or(Err(types::Errno::Overflow))?;
+                let pos = pos.checked_add(n).ok_or(types::Errno::Overflow)?;
+                position.store(pos, Ordering::Relaxed);
+
+                (buf, read, end)
+            }
+            Some(Descriptor::Stdin(stream)) => {
+                let Some(buf) = first_non_empty_iovec(iovs)? else {
+                    return Ok(0)
+                };
+                let (read, end) = wasi::streams::Host::read(
+                    self,
+                    stream,
+                    buf.len().try_into().unwrap_or(u64::MAX),
+                )
+                .await
+                .map_err(|_| types::Errno::Io)?;
+                (buf, read, end)
+            }
+            _ => return Err(types::Errno::Badf.into()),
+        };
+        if read.len() > buf.len() {
+            return Err(types::Errno::Range.into());
+        }
+        if !end && read.len() == 0 {
+            return Err(types::Errno::Intr.into());
+        }
+        let (buf, _) = buf.split_at_mut(read.len());
+        buf.copy_from_slice(&read);
+        let n = read.len().try_into().or(Err(types::Errno::Overflow))?;
+        Ok(n)
     }
 
+    /// Read from a file descriptor, without using and updating the file descriptor's offset.
+    /// NOTE: This is similar to `preadv` in POSIX.
     #[instrument(skip(self))]
     async fn fd_pread<'a>(
         &mut self,
@@ -971,7 +1054,45 @@ impl<
         iovs: &types::IovecArray<'a>,
         offset: types::Filesize,
     ) -> Result<types::Size, types::Error> {
-        todo!()
+        let desc = self.descriptors().await?.get(fd).cloned();
+        let (mut buf, read, end) = match desc {
+            Some(Descriptor::File(File { fd, blocking, .. })) if self.table().is_file(fd) => {
+                let Some(buf) = first_non_empty_iovec(iovs)? else {
+                    return Ok(0)
+                };
+
+                let stream = self
+                    .read_via_stream(fd, offset)
+                    .await
+                    .context("failed to call `read-via-stream`")
+                    .map_err(types::Error::trap)?;
+                let max = buf.len().try_into().unwrap_or(u64::MAX);
+                let (read, end) = if blocking {
+                    self.blocking_read(stream, max)
+                } else {
+                    wasi::streams::Host::read(self, stream, max)
+                }
+                .await
+                .map_err(|_| types::Errno::Io)?;
+
+                (buf, read, end)
+            }
+            Some(Descriptor::Stdin(..)) => {
+                // NOTE: legacy implementation returns SPIPE here
+                return Err(types::Errno::Spipe.into());
+            }
+            _ => return Err(types::Errno::Badf.into()),
+        };
+        if read.len() > buf.len() {
+            return Err(types::Errno::Range.into());
+        }
+        if !end && read.len() == 0 {
+            return Err(types::Errno::Intr.into());
+        }
+        let (buf, _) = buf.split_at_mut(read.len());
+        buf.copy_from_slice(&read);
+        let n = read.len().try_into().or(Err(types::Errno::Overflow))?;
+        Ok(n)
     }
 
     /// Write to a file descriptor.

@@ -178,25 +178,21 @@ async fn file_allocate() {
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
 async fn file_pread_pwrite() {
     run_with_temp_dir("file_pread_pwrite").await
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
 async fn file_seek_tell() {
     run_with_temp_dir("file_seek_tell").await
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
 async fn file_truncation() {
     run_with_temp_dir("file_truncation").await
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
 async fn file_unbuffered_write() {
     run_with_temp_dir("file_unbuffered_write").await
 }
