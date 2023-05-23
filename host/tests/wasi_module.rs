@@ -219,7 +219,7 @@ async fn path_exists() {
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
+#[cfg_attr(not(windows), should_panic)] // TODO: remove
 async fn path_filestat() {
     run_with_temp_dir("path_filestat").await
 }
@@ -322,7 +322,6 @@ async fn symlink_create() {
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
 async fn symlink_filestat() {
     run_with_temp_dir("symlink_filestat").await
 }

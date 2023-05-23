@@ -1395,6 +1395,8 @@ impl<
         })
     }
 
+    /// Adjust the timestamps of a file or directory.
+    /// NOTE: This is similar to `utimensat` in POSIX.
     #[instrument(skip(self))]
     async fn path_filestat_set_times<'a>(
         &mut self,
@@ -1405,7 +1407,26 @@ impl<
         mtim: types::Timestamp,
         fst_flags: types::Fstflags,
     ) -> Result<(), types::Error> {
-        todo!()
+        let atim = systimespec(
+            fst_flags.contains(types::Fstflags::ATIM),
+            atim,
+            fst_flags.contains(types::Fstflags::ATIM_NOW),
+        )?;
+        let mtim = systimespec(
+            fst_flags.contains(types::Fstflags::MTIM),
+            mtim,
+            fst_flags.contains(types::Fstflags::MTIM_NOW),
+        )?;
+
+        let dirfd = self.get_dir_fd(dirfd).await?.ok_or(types::Errno::Badf)?;
+        let path = read_string(path)?;
+        self.set_times_at(dirfd, flags.into(), path, atim, mtim)
+            .await
+            .map_err(|e| {
+                e.try_into()
+                    .context("failed to call `set-times-at`")
+                    .unwrap_or_else(types::Error::trap)
+            })
     }
 
     #[instrument(skip(self))]
