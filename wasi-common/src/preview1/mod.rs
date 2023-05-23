@@ -192,6 +192,14 @@ impl<T: WasiPreview1View + ?Sized> DescriptorsRef<'_, T> {
         }
     }
 
+    fn get_file_mut(&mut self, fd: types::Fd) -> Option<&mut File> {
+        let fd = fd.into();
+        match self.descriptors.get_mut().get_mut(&fd)? {
+            Descriptor::File(file) if self.view.table().is_file(file.fd) => Some(file),
+            _ => None,
+        }
+    }
+
     fn get_seekable(&mut self, fd: types::Fd) -> ErrnoResult<&File> {
         let fd = fd.into();
         match self.descriptors.get_mut().get(&fd) {
@@ -862,13 +870,29 @@ impl<
         })
     }
 
+    /// Adjust the flags associated with a file descriptor.
+    /// NOTE: This is similar to `fcntl(fd, F_SETFL, flags)` in POSIX.
     #[instrument(skip(self))]
     async fn fd_fdstat_set_flags(
         &mut self,
         fd: types::Fd,
         flags: types::Fdflags,
     ) -> Result<(), types::Error> {
-        todo!()
+        let mut ds = self.descriptors().await?;
+        let File {
+            append, blocking, ..
+        } = ds.get_file_mut(fd).ok_or(types::Errno::Badf)?;
+
+        // Only support changing the NONBLOCK or APPEND flags.
+        if flags.contains(types::Fdflags::DSYNC)
+            || flags.contains(types::Fdflags::SYNC)
+            || flags.contains(types::Fdflags::RSYNC)
+        {
+            return Err(types::Errno::Inval.into());
+        }
+        *append = flags.contains(types::Fdflags::APPEND);
+        *blocking = !flags.contains(types::Fdflags::NONBLOCK);
+        Ok(())
     }
 
     #[instrument(skip(self))]
