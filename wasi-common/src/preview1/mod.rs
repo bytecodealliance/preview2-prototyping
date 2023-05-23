@@ -1153,9 +1153,16 @@ impl<
         Ok(pos)
     }
 
+    /// Synchronize the data and metadata of a file to disk.
+    /// NOTE: This is similar to `fsync` in POSIX.
     #[instrument(skip(self))]
     async fn fd_sync(&mut self, fd: types::Fd) -> Result<(), types::Error> {
-        todo!()
+        let fd = self.get_file_fd(fd).await?.ok_or(types::Errno::Badf)?;
+        self.sync(fd).await.map_err(|e| {
+            e.try_into()
+                .context("failed to call `sync`")
+                .unwrap_or_else(types::Error::trap)
+        })
     }
 
     /// Return the current offset of a file descriptor.
