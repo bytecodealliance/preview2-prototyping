@@ -1089,7 +1089,13 @@ impl<
         dirfd: types::Fd,
         path: &GuestPtr<'a, str>,
     ) -> Result<(), types::Error> {
-        todo!()
+        let dirfd = self.get_dirfd(dirfd).await?.ok_or(types::Errno::Badf)?;
+        let path = read_string(path)?;
+        self.remove_directory_at(dirfd, path).await.map_err(|e| {
+            e.try_into()
+                .context("failed to call `remove-directory-at`")
+                .unwrap_or_else(types::Error::trap)
+        })
     }
 
     #[instrument(skip(self))]
