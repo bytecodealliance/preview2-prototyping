@@ -720,9 +720,16 @@ impl<
         Ok(())
     }
 
+    /// Synchronize the data of a file to disk.
+    /// NOTE: This is similar to `fdatasync` in POSIX.
     #[instrument(skip(self))]
     async fn fd_datasync(&mut self, fd: types::Fd) -> Result<(), types::Error> {
-        todo!()
+        let fd = self.get_file_fd(fd).await?.ok_or(types::Errno::Badf)?;
+        self.sync_data(fd).await.map_err(|e| {
+            e.try_into()
+                .context("failed to call `sync-data`")
+                .unwrap_or_else(types::Error::trap)
+        })
     }
 
     /// Get the attributes of a file descriptor.
