@@ -800,13 +800,26 @@ impl<
         }
     }
 
+    /// Adjust the size of an open file. If this increases the file's size, the extra bytes are filled with zeros.
+    /// NOTE: This is similar to `ftruncate` in POSIX.
     #[instrument(skip(self))]
     async fn fd_filestat_set_size(
         &mut self,
         fd: types::Fd,
         size: types::Filesize,
     ) -> Result<(), types::Error> {
-        todo!()
+        let desc = self.descriptors().await?.get(fd).cloned();
+        match desc {
+            Some(Descriptor::File { fd, .. }) if self.table().is_file(fd) => {
+                self.set_size(fd, size).await.map_err(|e| {
+                    e.try_into()
+                        .context("failed to call `set-size`")
+                        .unwrap_or_else(types::Error::trap)
+                })
+            }
+            // NOTE: legacy implementation returns `BADF` here
+            _ => Err(types::Errno::Badf.into()),
+        }
     }
 
     #[instrument(skip(self))]
