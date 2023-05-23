@@ -1552,6 +1552,8 @@ impl<
         })
     }
 
+    /// Rename a file or directory.
+    /// NOTE: This is similar to `renameat` in POSIX.
     #[instrument(skip(self))]
     async fn path_rename<'a>(
         &mut self,
@@ -1560,7 +1562,17 @@ impl<
         dest_fd: types::Fd,
         dest_path: &GuestPtr<'a, str>,
     ) -> Result<(), types::Error> {
-        todo!()
+        let src_fd = self.get_dir_fd(src_fd).await?;
+        let dest_fd = self.get_dir_fd(dest_fd).await?;
+        let src_path = read_string(src_path)?;
+        let dest_path = read_string(dest_path)?;
+        self.rename_at(src_fd, src_path, dest_fd, dest_path)
+            .await
+            .map_err(|e| {
+                e.try_into()
+                    .context("failed to call `rename-at`")
+                    .unwrap_or_else(types::Error::trap)
+            })
     }
 
     #[instrument(skip(self))]

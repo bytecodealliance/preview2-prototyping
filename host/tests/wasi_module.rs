@@ -246,13 +246,12 @@ async fn path_open_missing() {
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
+#[cfg_attr(windows, should_panic)] // TODO: remove
 async fn path_rename() {
     run_with_temp_dir("path_rename").await
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
 async fn path_rename_dir_trailing_slashes() {
     run_with_temp_dir("path_rename_dir_trailing_slashes").await
 }
