@@ -1429,6 +1429,8 @@ impl<
             })
     }
 
+    /// Create a hard link.
+    /// NOTE: This is similar to `linkat` in POSIX.
     #[instrument(skip(self))]
     async fn path_link<'a>(
         &mut self,
@@ -1438,7 +1440,20 @@ impl<
         target_fd: types::Fd,
         target_path: &GuestPtr<'a, str>,
     ) -> Result<(), types::Error> {
-        todo!()
+        let src_fd = self.get_dir_fd(src_fd).await?.ok_or(types::Errno::Badf)?;
+        let target_fd = self
+            .get_dir_fd(target_fd)
+            .await?
+            .ok_or(types::Errno::Badf)?;
+        let src_path = read_string(src_path)?;
+        let target_path = read_string(target_path)?;
+        self.link_at(src_fd, src_flags.into(), src_path, target_fd, target_path)
+            .await
+            .map_err(|e| {
+                e.try_into()
+                    .context("failed to call `link-at`")
+                    .unwrap_or_else(types::Error::trap)
+            })
     }
 
     /// Open a file or directory.

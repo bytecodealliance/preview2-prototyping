@@ -225,7 +225,7 @@ async fn path_filestat() {
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
+#[cfg_attr(windows, should_panic)] // TODO: remove
 async fn path_link() {
     run_with_temp_dir("path_link").await
 }
