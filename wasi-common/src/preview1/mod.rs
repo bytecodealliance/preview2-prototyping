@@ -17,26 +17,29 @@ use wiggle::tracing::instrument;
 use wiggle::{GuestPtr, GuestStrCow};
 
 #[derive(Clone, Debug)]
+struct File {
+    /// The handle to the preview2 descriptor that this file is referencing.
+    fd: wasi::filesystem::Descriptor,
+
+    /// The current-position pointer.
+    position: Arc<AtomicU64>,
+
+    /// In append mode, all writes append to the file.
+    append: bool,
+
+    /// In blocking mode, read and write calls dispatch to blocking_read and
+    /// blocking_write on the underlying streams. When false, read and write
+    /// dispatch to stream's plain read and write.
+    blocking: bool,
+}
+
+#[derive(Clone, Debug)]
 enum Descriptor {
     Stdin(wasi::preopens::InputStream),
     Stdout(wasi::preopens::OutputStream),
     Stderr(wasi::preopens::OutputStream),
     PreopenDirectory((wasi::filesystem::Descriptor, String)),
-    File {
-        /// The handle to the preview2 descriptor that this file is referencing.
-        fd: wasi::filesystem::Descriptor,
-
-        /// The current-position pointer.
-        position: Arc<AtomicU64>,
-
-        /// In append mode, all writes append to the file.
-        append: bool,
-
-        /// In blocking mode, read and write calls dispatch to blocking_read and
-        /// blocking_write on the underlying streams. When false, read and write
-        /// dispatch to stream's plain read and write.
-        blocking: bool,
-    },
+    File(File),
 }
 
 #[derive(Debug, Default)]
@@ -65,7 +68,7 @@ impl DerefMut for Descriptors {
 }
 
 impl Descriptors {
-    pub async fn new(
+    async fn new(
         preopens: &mut (impl wasi::preopens::Host + ?Sized),
     ) -> Result<Self, types::Error> {
         let wasi::preopens::StdioPreopens {
@@ -93,7 +96,7 @@ impl Descriptors {
         Ok(descriptors)
     }
 
-    pub fn unused(&self) -> ErrnoResult<u32> {
+    fn unused(&self) -> ErrnoResult<u32> {
         match self.last_key_value() {
             Some((fd, _)) => {
                 if let Some(fd) = fd.checked_add(1) {
@@ -112,14 +115,14 @@ impl Descriptors {
         }
     }
 
-    pub fn remove(&mut self, fd: types::Fd) -> Option<Descriptor> {
+    fn remove(&mut self, fd: types::Fd) -> Option<Descriptor> {
         let fd = fd.into();
         let desc = self.used.remove(&fd)?;
         self.free.push(fd);
         Some(desc)
     }
 
-    pub fn push(&mut self, desc: Descriptor) -> ErrnoResult<u32> {
+    fn push(&mut self, desc: Descriptor) -> ErrnoResult<u32> {
         let fd = if let Some(fd) = self.free.pop() {
             fd
         } else {
@@ -127,6 +130,10 @@ impl Descriptors {
         };
         assert!(self.insert(fd, desc).is_none());
         Ok(fd)
+    }
+
+    fn push_file(&mut self, file: File) -> ErrnoResult<u32> {
+        self.push(Descriptor::File(file))
     }
 }
 
@@ -175,10 +182,34 @@ impl<T: WasiPreview1View + ?Sized> DescriptorsRef<'_, T> {
         self.descriptors.get_mut().get(&fd)
     }
 
+    fn get_file(&mut self, fd: types::Fd) -> Option<&File> {
+        let fd = fd.into();
+        match self.descriptors.get_mut().get(&fd)? {
+            Descriptor::File(file @ File { fd, .. }) if self.view.table().is_file(*fd) => {
+                Some(file)
+            }
+            _ => None,
+        }
+    }
+
+    fn get_seekable(&mut self, fd: types::Fd) -> ErrnoResult<&File> {
+        let fd = fd.into();
+        match self.descriptors.get_mut().get(&fd) {
+            Some(Descriptor::File(file @ File { fd, .. })) if self.view.table().is_file(*fd) => {
+                Ok(file)
+            }
+            Some(Descriptor::Stdin(..) | Descriptor::Stdout(..) | Descriptor::Stderr(..)) => {
+                // NOTE: legacy implementation returns SPIPE here
+                return Err(types::Errno::Spipe.into());
+            }
+            _ => return Err(types::Errno::Badf.into()),
+        }
+    }
+
     fn get_fd(&mut self, fd: types::Fd) -> Option<wasi::filesystem::Descriptor> {
         let fd = fd.into();
         match self.descriptors.get_mut().get(&fd)? {
-            Descriptor::File { fd, .. } => Some(*fd),
+            Descriptor::File(File { fd, .. }) => Some(*fd),
             Descriptor::PreopenDirectory((fd, _)) => Some(*fd),
             Descriptor::Stdin(stream) => Some(*stream),
             Descriptor::Stdout(stream) | Descriptor::Stderr(stream) => Some(*stream),
@@ -186,17 +217,13 @@ impl<T: WasiPreview1View + ?Sized> DescriptorsRef<'_, T> {
     }
 
     fn get_file_fd(&mut self, fd: types::Fd) -> Option<wasi::filesystem::Descriptor> {
-        let fd = fd.into();
-        match self.descriptors.get_mut().get(&fd)? {
-            Descriptor::File { fd, .. } if self.view.table().is_file(*fd) => Some(*fd),
-            _ => None,
-        }
+        self.get_file(fd).map(|File { fd, .. }| *fd)
     }
 
     fn get_dir_fd(&mut self, fd: types::Fd) -> Option<wasi::filesystem::Descriptor> {
         let fd = fd.into();
         match self.descriptors.get_mut().get(&fd)? {
-            Descriptor::File { fd, .. } if self.view.table().is_dir(*fd) => Some(*fd),
+            Descriptor::File(File { fd, .. }) if self.view.table().is_dir(*fd) => Some(*fd),
             Descriptor::PreopenDirectory((fd, _)) => Some(*fd),
             _ => None,
         }
@@ -756,12 +783,12 @@ impl<
                 });
             }
             Some(Descriptor::PreopenDirectory((fd, _))) => (*fd, false, false),
-            Some(Descriptor::File {
+            Some(Descriptor::File(File {
                 fd,
                 blocking,
                 append,
                 ..
-            }) => (*fd, *blocking, *append),
+            })) => (*fd, *blocking, *append),
             None => return Err(types::Errno::Badf.into()),
         };
 
@@ -849,7 +876,7 @@ impl<
                     ctim: 0,
                 })
             }
-            Some(Descriptor::PreopenDirectory((fd, _)) | Descriptor::File { fd, .. }) => {
+            Some(Descriptor::PreopenDirectory((fd, _)) | Descriptor::File(File { fd, .. })) => {
                 let wasi::filesystem::DescriptorStat {
                     device,
                     inode,
@@ -957,20 +984,12 @@ impl<
     ) -> Result<types::Size, types::Error> {
         let desc = self.descriptors().await?.get(fd).cloned();
         let n = match desc {
-            Some(Descriptor::Stdout(stream) | Descriptor::Stderr(stream)) => {
-                let Some(buf) = first_non_empty_ciovec(ciovs)? else {
-                    return Ok(0)
-                };
-                wasi::streams::Host::write(self, stream, buf)
-                    .await
-                    .map_err(|_| types::Errno::Io)?
-            }
-            Some(Descriptor::File {
+            Some(Descriptor::File(File {
                 fd,
                 blocking,
                 append,
                 position,
-            }) if self.table().is_file(fd) => {
+            })) if self.table().is_file(fd) => {
                 let Some(buf) = first_non_empty_ciovec(ciovs)? else {
                     return Ok(0)
                 };
@@ -1003,6 +1022,14 @@ impl<
                 }
                 n
             }
+            Some(Descriptor::Stdout(stream) | Descriptor::Stderr(stream)) => {
+                let Some(buf) = first_non_empty_ciovec(ciovs)? else {
+                    return Ok(0)
+                };
+                wasi::streams::Host::write(self, stream, buf)
+                    .await
+                    .map_err(|_| types::Errno::Io)?
+            }
             _ => return Err(types::Errno::Badf.into()),
         }
         .try_into()
@@ -1021,11 +1048,7 @@ impl<
     ) -> Result<types::Size, types::Error> {
         let desc = self.descriptors().await?.get(fd).cloned();
         let n = match desc {
-            Some(Descriptor::Stdout(..) | Descriptor::Stderr(..)) => {
-                // NOTE: legacy implementation returns SPIPE here
-                return Err(types::Errno::Spipe.into());
-            }
-            Some(Descriptor::File { fd, blocking, .. }) if self.table().is_file(fd) => {
+            Some(Descriptor::File(File { fd, blocking, .. })) if self.table().is_file(fd) => {
                 let Some(buf) = first_non_empty_ciovec(ciovs)? else {
                     return Ok(0)
                 };
@@ -1041,6 +1064,10 @@ impl<
                 }
                 .await
                 .map_err(|_| types::Errno::Io)?
+            }
+            Some(Descriptor::Stdout(..) | Descriptor::Stderr(..)) => {
+                // NOTE: legacy implementation returns SPIPE here
+                return Err(types::Errno::Spipe.into());
             }
             _ => return Err(types::Errno::Badf.into()),
         }
@@ -1100,35 +1127,30 @@ impl<
         offset: types::Filedelta,
         whence: types::Whence,
     ) -> Result<types::Filesize, types::Error> {
-        let desc = self.descriptors().await?.get(fd).cloned();
-        match desc {
-            Some(Descriptor::File { fd, position, .. }) if self.table().is_file(fd) => {
-                let pos = match whence {
-                    types::Whence::Set if offset >= 0 => offset as _,
-                    types::Whence::Cur => position
-                        .load(Ordering::Relaxed)
-                        .checked_add_signed(offset)
-                        .ok_or(types::Errno::Inval)?,
-                    types::Whence::End => {
-                        let wasi::filesystem::DescriptorStat { size, .. } =
-                            self.stat(fd).await.map_err(|e| {
-                                e.try_into()
-                                    .context("failed to call `stat`")
-                                    .unwrap_or_else(types::Error::trap)
-                            })?;
-                        size.checked_add_signed(offset).ok_or(types::Errno::Inval)?
-                    }
-                    _ => return Err(types::Errno::Inval.into()),
-                };
-                position.store(pos, Ordering::Relaxed);
-                Ok(pos)
+        let (fd, position) = {
+            let mut ds = self.descriptors().await?;
+            let File { fd, position, .. } = ds.get_seekable(fd)?;
+            (*fd, Arc::clone(&position))
+        };
+        let pos = match whence {
+            types::Whence::Set if offset >= 0 => offset as _,
+            types::Whence::Cur => position
+                .load(Ordering::Relaxed)
+                .checked_add_signed(offset)
+                .ok_or(types::Errno::Inval)?,
+            types::Whence::End => {
+                let wasi::filesystem::DescriptorStat { size, .. } =
+                    self.stat(fd).await.map_err(|e| {
+                        e.try_into()
+                            .context("failed to call `stat`")
+                            .unwrap_or_else(types::Error::trap)
+                    })?;
+                size.checked_add_signed(offset).ok_or(types::Errno::Inval)?
             }
-            Some(Descriptor::Stdin(..) | Descriptor::Stdout(..) | Descriptor::Stderr(..)) => {
-                Err(types::Errno::Spipe.into())
-            }
-            // NOTE: legacy implementation returns `BADF` here
-            _ => Err(types::Errno::Badf.into()),
-        }
+            _ => return Err(types::Errno::Inval.into()),
+        };
+        position.store(pos, Ordering::Relaxed);
+        Ok(pos)
     }
 
     #[instrument(skip(self))]
@@ -1136,9 +1158,16 @@ impl<
         todo!()
     }
 
+    /// Return the current offset of a file descriptor.
+    /// NOTE: This is similar to `lseek(fd, 0, SEEK_CUR)` in POSIX.
     #[instrument(skip(self))]
     async fn fd_tell(&mut self, fd: types::Fd) -> Result<types::Filesize, types::Error> {
-        todo!()
+        let pos = self
+            .descriptors()
+            .await?
+            .get_seekable(fd)
+            .map(|File { position, .. }| position.load(Ordering::Relaxed))?;
+        Ok(pos)
     }
 
     #[instrument(skip(self))]
@@ -1237,8 +1266,8 @@ impl<
         let desc = self.descriptors().await?.get(dirfd).cloned();
         let dirfd = match desc {
             Some(Descriptor::PreopenDirectory((fd, _))) => fd,
-            Some(Descriptor::File { fd, .. }) if self.table().is_dir(fd) => fd,
-            Some(Descriptor::File { fd, .. }) if !self.table().is_dir(fd) => {
+            Some(Descriptor::File(File { fd, .. })) if self.table().is_dir(fd) => fd,
+            Some(Descriptor::File(File { fd, .. })) if !self.table().is_dir(fd) => {
                 // NOTE: Unlike most other methods, legacy implementation returns `NOTDIR` here
                 return Err(types::Errno::Notdir.into());
             }
@@ -1259,7 +1288,7 @@ impl<
                     .context("failed to call `open-at`")
                     .unwrap_or_else(types::Error::trap)
             })?;
-        let fd = self.descriptors().await?.get_mut().push(Descriptor::File {
+        let fd = self.descriptors().await?.get_mut().push_file(File {
             fd,
             position: Default::default(),
             append: fdflags.contains(types::Fdflags::APPEND),
