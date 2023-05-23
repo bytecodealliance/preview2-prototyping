@@ -895,14 +895,16 @@ impl<
         Ok(())
     }
 
+    /// Adjust the rights associated with a file descriptor.
+    /// This can only be used to remove rights, and returns `errno::notcapable` if called in a way that would attempt to add rights
     #[instrument(skip(self))]
     async fn fd_fdstat_set_rights(
         &mut self,
-        fd: types::Fd,
-        fs_rights_base: types::Rights,
-        fs_rights_inheriting: types::Rights,
+        _fd: types::Fd,
+        _fs_rights_base: types::Rights,
+        _fs_rights_inheriting: types::Rights,
     ) -> Result<(), types::Error> {
-        todo!()
+        unreachable!()
     }
 
     /// Return the attributes of an open file.
