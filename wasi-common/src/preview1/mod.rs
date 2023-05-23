@@ -983,6 +983,8 @@ impl<
         Ok(())
     }
 
+    /// Move the offset of a file descriptor.
+    /// NOTE: This is similar to `lseek` in POSIX.
     #[instrument(skip(self))]
     async fn fd_seek(
         &mut self,
@@ -990,7 +992,35 @@ impl<
         offset: types::Filedelta,
         whence: types::Whence,
     ) -> Result<types::Filesize, types::Error> {
-        todo!()
+        let desc = self.descriptors().await?.get(fd).cloned();
+        match desc {
+            Some(Descriptor::File { fd, position, .. }) if self.table().is_file(fd) => {
+                let pos = match whence {
+                    types::Whence::Set if offset >= 0 => offset as _,
+                    types::Whence::Cur => position
+                        .load(Ordering::Relaxed)
+                        .checked_add_signed(offset)
+                        .ok_or(types::Errno::Inval)?,
+                    types::Whence::End => {
+                        let wasi::filesystem::DescriptorStat { size, .. } =
+                            self.stat(fd).await.map_err(|e| {
+                                e.try_into()
+                                    .context("failed to call `stat`")
+                                    .unwrap_or_else(types::Error::trap)
+                            })?;
+                        size.checked_add_signed(offset).ok_or(types::Errno::Inval)?
+                    }
+                    _ => return Err(types::Errno::Inval.into()),
+                };
+                position.store(pos, Ordering::Relaxed);
+                Ok(pos)
+            }
+            Some(Descriptor::Stdin(..) | Descriptor::Stdout(..) | Descriptor::Stderr(..)) => {
+                Err(types::Errno::Spipe.into())
+            }
+            // NOTE: legacy implementation returns `BADF` here
+            _ => Err(types::Errno::Badf.into()),
+        }
     }
 
     #[instrument(skip(self))]

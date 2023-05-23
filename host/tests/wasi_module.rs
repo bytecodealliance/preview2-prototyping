@@ -140,7 +140,7 @@ async fn dangling_symlink() {
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
+#[cfg_attr(windows, should_panic)] // TODO: remove
 async fn directory_seek() {
     run_with_temp_dir("directory_seek").await
 }
