@@ -281,7 +281,6 @@ async fn poll_oneoff_stdio() {
 }
 
 #[test_log::test(tokio::test)]
-#[should_panic]
 async fn readlink() {
     run_with_temp_dir("readlink").await
 }

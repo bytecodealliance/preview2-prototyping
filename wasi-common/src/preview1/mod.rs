@@ -1526,6 +1526,8 @@ impl<
         Ok(fd.into())
     }
 
+    /// Read the contents of a symbolic link.
+    /// NOTE: This is similar to `readlinkat` in POSIX.
     #[instrument(skip(self))]
     async fn path_readlink<'a>(
         &mut self,
@@ -1534,7 +1536,20 @@ impl<
         buf: &GuestPtr<'a, u8>,
         buf_len: types::Size,
     ) -> Result<types::Size, types::Error> {
-        todo!()
+        let dirfd = self.get_dir_fd(dirfd).await?;
+        let path = read_string(path)?;
+        let mut path = self.readlink_at(dirfd, path).await.map_err(|e| {
+            e.try_into()
+                .context("failed to call `readlink-at`")
+                .unwrap_or_else(types::Error::trap)
+        })?;
+        if let Ok(buf_len) = buf_len.try_into() {
+            // `path` cannot be longer than `usize`, only truncate if `buf_len` fits in `usize`
+            path.truncate(buf_len);
+        }
+        let n = path.len().try_into().map_err(|_| types::Errno::Overflow)?;
+        write_bytes(buf, &path)?;
+        Ok(n)
     }
 
     #[instrument(skip(self))]
