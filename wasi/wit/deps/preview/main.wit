@@ -1,6 +1,8 @@
-package wasi:preview
+package wasmtime:wasi
 
-world reactor {
+// All of the same imports available in the wasi:cli/command world, but no
+// export required:
+world preview1-adapter-reactor {
   import wasi:clocks/wall-clock
   import wasi:clocks/monotonic-clock
   import wasi:clocks/timezone
@@ -28,7 +30,4 @@ world reactor {
   import wasi:cli/terminal-stdin
   import wasi:cli/terminal-stdout
   import wasi:cli/terminal-stderr
-
-  import wasi:logging/logging
-  import wasi:http/outgoing-handler
 }
