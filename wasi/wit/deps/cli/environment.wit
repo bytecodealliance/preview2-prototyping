@@ -1,4 +1,4 @@
-default interface environment {
+interface environment {
   /// Get the POSIX-style environment variables.
   ///
   /// Each environment variable is provided as a pair of string variable names
@@ -11,4 +11,8 @@ default interface environment {
 
   /// Get the POSIX-style arguments to the program.
   get-arguments: func() -> list<string>
+
+  /// Return a path that programs should use as their initial current working
+  /// directory, interpreting `.` as shorthand for this.
+  initial-cwd: func() -> option<string>
 }

@@ -46,7 +46,7 @@ fn main() {
     // wasi-tests and command-tests need require nightly for a feature in the `io-extras` crate:
     let mut cmd = Command::new("rustup");
     cmd.arg("run")
-        .arg("nightly-2023-03-14")
+        .arg("nightly")
         .arg("cargo")
         .arg("build")
         .arg("--target=wasm32-wasi")

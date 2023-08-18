@@ -70,14 +70,11 @@ jobs:
             os: macos-latest
     steps:
     - uses: actions/checkout@v3
-      # TODO: Remove pin to 2023-03-14 once rust-lang/rust#109199 is released
-      # (expected in 1.71)
-      # TODO: Also remove it in test-programs/build.rs
-    - run: rustup update nightly-2023-03-14
+    - run: rustup update nightly
     - run: rustup target add --toolchain=stable wasm32-wasi wasm32-unknown-unknown
-    - run: rustup target add --toolchain=nightly-2023-03-14 wasm32-wasi wasm32-unknown-unknown
+    - run: rustup target add --toolchain=nightly wasm32-wasi wasm32-unknown-unknown
     - name: Run test suite
-      run: cargo test -p host
+      run: cargo +nightly test -p host
 
   build-preview1-component-adapter:
     name: Build wasi-preview1-component-adapter

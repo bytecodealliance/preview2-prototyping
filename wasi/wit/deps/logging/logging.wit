@@ -1,6 +1,8 @@
+package wasi:logging
+
 /// WASI Logging is a logging API intended to let users emit log messages with
 /// simple priority levels and context values.
-default interface handler {
+interface logging {
     /// A log level, describing a kind of message.
     enum level {
        /// Describes messages about the values of variables and the flow of
@@ -20,6 +22,9 @@ default interface handler {
 
        /// Describes messages indicating serious errors.
        error,
+
+       /// Describes messages indicating fatal errors.
+       critical,
     }
 
     /// Emit a log message.

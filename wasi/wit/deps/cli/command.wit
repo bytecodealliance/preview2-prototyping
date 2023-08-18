@@ -1,6 +1,6 @@
-package wasi:preview
+package wasi:cli
 
-world reactor {
+world command {
   import wasi:clocks/wall-clock
   import wasi:clocks/monotonic-clock
   import wasi:clocks/timezone
@@ -18,17 +18,16 @@ world reactor {
   import wasi:random/insecure-seed
   import wasi:poll/poll
   import wasi:io/streams
-  import wasi:cli/environment
-  import wasi:cli/exit
-  import wasi:cli/stdin
-  import wasi:cli/stdout
-  import wasi:cli/stderr
-  import wasi:cli/terminal-input
-  import wasi:cli/terminal-output
-  import wasi:cli/terminal-stdin
-  import wasi:cli/terminal-stdout
-  import wasi:cli/terminal-stderr
 
-  import wasi:logging/logging
-  import wasi:http/outgoing-handler
+  import environment
+  import exit
+  import stdin
+  import stdout
+  import stderr
+  import terminal-input
+  import terminal-output
+  import terminal-stdin
+  import terminal-stdout
+  import terminal-stderr
+  export run
 }
