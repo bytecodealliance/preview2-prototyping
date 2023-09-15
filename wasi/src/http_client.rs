@@ -7,6 +7,16 @@ use crate::snapshots::preview_2::wasi::http::{outgoing_handler, types as http_ty
 use crate::snapshots::preview_2::wasi::io::streams;
 use crate::snapshots::preview_2::wasi::poll::poll;
 
+struct DropPollable {
+    pollable: poll::Pollable,
+}
+
+impl Drop for DropPollable {
+    fn drop(&mut self) {
+        poll::drop_pollable(self.pollable);
+    }
+}
+
 pub struct DefaultClient {
     options: Option<outgoing_handler::RequestOptions>,
 }
@@ -68,16 +78,36 @@ impl TryFrom<http::Request<Bytes>> for Request {
             .map_err(|_| anyhow!("outgoing request write failed"))?;
 
         if body.is_empty() {
-            streams::write(request_body, &[]).map_err(|_| anyhow!("writing request body"))?;
-        } else {
-            let output_stream_pollable = streams::subscribe_to_output_stream(request_body);
-            let mut body_cursor = 0;
-            while body_cursor < body.len() {
-                let (written, _) = streams::write(request_body, &body[body_cursor..])
-                    .map_err(|_| anyhow!("writing request body"))?;
-                body_cursor += written as usize;
+            let sub = DropPollable {
+                pollable: streams::subscribe_to_output_stream(request_body),
+            };
+            let mut buf = body.as_ref();
+            while !buf.is_empty() {
+                poll::poll_oneoff(&[sub.pollable]);
+
+                let permit = match streams::check_write(request_body) {
+                    Ok(n) => usize::try_from(n)?,
+                    Err(_) => anyhow::bail!("output stream error"),
+                };
+
+                let len = buf.len().min(permit);
+                let (chunk, rest) = buf.split_at(len);
+                buf = rest;
+
+                if streams::write(request_body, chunk).is_err() {
+                    anyhow::bail!("output stream error")
+                }
             }
-            poll::drop_pollable(output_stream_pollable);
+
+            if streams::flush(request_body).is_err() {
+                anyhow::bail!("output stream error")
+            }
+
+            poll::poll_oneoff(&[sub.pollable]);
+
+            if streams::check_write(request_body).is_err() {
+                anyhow::bail!("output stream error")
+            }
         }
 
         Ok(Request::new(request, request_body))
@@ -146,21 +176,25 @@ impl TryFrom<Response> for http::Response<Bytes> {
 
         let body_stream = http_types::incoming_response_consume(incoming_response)
             .map_err(|_| anyhow!("consuming incoming response"))?;
-        let input_stream_pollable = streams::subscribe_to_input_stream(body_stream);
 
         let mut body = BytesMut::new();
-        let mut eof = streams::StreamStatus::Open;
-        while eof != streams::StreamStatus::Ended {
-            let (body_chunk, stream_status) = streams::read(body_stream, u64::MAX)
-                .map_err(|e| anyhow!("reading response body: {e:?}"))?;
-            eof = if body_chunk.is_empty() {
-                streams::StreamStatus::Ended
-            } else {
-                stream_status
+        {
+            let sub = DropPollable {
+                pollable: streams::subscribe_to_input_stream(body_stream),
             };
-            body.put(body_chunk.as_slice());
+            poll::poll_oneoff(&[sub.pollable]);
+            let mut eof = streams::StreamStatus::Open;
+            while eof != streams::StreamStatus::Ended {
+                let (body_chunk, stream_status) = streams::read(body_stream, u64::MAX)
+                    .map_err(|e| anyhow!("reading response body: {e:?}"))?;
+                eof = if body_chunk.is_empty() {
+                    streams::StreamStatus::Ended
+                } else {
+                    stream_status
+                };
+                body.put(body_chunk.as_slice());
+            }
         }
-        poll::drop_pollable(input_stream_pollable);
 
         let mut res = http::Response::builder()
             .status(status)
