@@ -1809,7 +1809,7 @@ dependencies = [
 
 [[package]]
 name = "wasi-preview2-prototype"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "anyhow",
  "bytes",
