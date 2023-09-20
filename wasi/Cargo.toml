@@ -1,7 +1,7 @@
 [package]
 # name = "wasi"
 name = "wasi-preview2-prototype"
-version = "0.0.2"
+version = "0.0.3"
 # version = "0.12.0+wasi-snapshot-preview2"
 description = "Experimental WASI Preview2 API bindings for Rust"
 edition.workspace = true
